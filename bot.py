@@ -81,7 +81,8 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
 def sa_menu_kb():
     return ReplyKeyboardMarkup([
         ["🏢 Kompaniyalar", "👑 Super Adminlar"],
-        ["📊 Umumiy hisobot", "🔐 Sozlamalar"],
+        ["📊 Umumiy hisobot", "📋 Audit Log"],
+        ["🔐 Sozlamalar"],
     ], resize_keyboard=True)
 
 def adm_menu_kb():
@@ -258,6 +259,21 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(fayl)
         except Exception as e:
             await update.message.reply_text(f"❌ Xatolik: {e}")
+        return SA_MENU
+
+    elif matn == "📋 Audit Log":
+        logs = super_admin_audit_log(limit=20)
+        if not logs:
+            await update.message.reply_text("📋 Hozircha audit log yo'q.")
+        else:
+            xabar = "📋 *OXIRGI 20 AMAL:*\n\n"
+            for log in logs:
+                komp_nomi, amal, tafsilot, vaqt, user_ism, xodim_id, xodim_ism = log
+                xabar += f"🏢 {komp_nomi}\n"
+                xabar += f"📌 {amal} | {vaqt}\n"
+                xabar += f"👤 {user_ism}\n"
+                xabar += f"📝 {tafsilot}\n━━━━━━━━━━━━\n"
+            await update.message.reply_text(xabar, parse_mode='Markdown')
         return SA_MENU
 
     elif matn == "🔐 Sozlamalar":
@@ -581,7 +597,17 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
         return SA_MENU
     elif matn == "🗑 O'chirish":
+        komp_id = context.user_data.get('sa_komp_id')
+        x = xodim_olish(xodim_id)
+        xodim_ism = x[1] if x else 'Unknown'
         xodim_ochirish(xodim_id)
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Super Admin'
+        tafsilot = f"Xodim o'chirildi: {xodim_ism}"
+        audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
         await update.message.reply_text("🗑 Xodim o'chirildi!", reply_markup=sa_menu_kb())
         return SA_MENU
     elif matn == "✏️ Tahrirlash":
@@ -876,10 +902,17 @@ async def adm_xodim_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_XODIM_ROL
     komp_id = context.user_data.get('komp_id')
     kod = random_kod()
-    xodim_qoshish(context.user_data['y_ism'], context.user_data['y_tel'],
+    xodim_id = xodim_qoshish(context.user_data['y_ism'], context.user_data['y_tel'],
                   context.user_data['y_lav'], context.user_data['y_oylik'],
                   context.user_data['y_bosh'], context.user_data['y_tug'],
                   komp_id, rol, kod)
+
+    # AUDIT LOG
+    user_id = update.effective_user.id
+    user_ism = update.effective_user.first_name or 'Admin'
+    tafsilot = f"Yangi xodim: {context.user_data['y_ism']} | Tel: {context.user_data['y_tel']} | Rol: {rol}"
+    audit_log_qoshish(komp_id, 'XODIM_QO\'SHISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
     await update.message.reply_text(
         f"✅ *Xodim qo'shildi!*\n\n👤 {context.user_data['y_ism']}\n"
         f"💼 {context.user_data['y_lav']}\n🎭 {rol}\n🔑 Kod: `{kod}`\n\n⚠️ Kodni xodimga bering!",
@@ -896,7 +929,17 @@ async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['tahrir_xodim_id'] = xodim_id
         amal = context.user_data.get('xodim_amal')
         if amal == 'ochir':
+            komp_id = context.user_data.get('komp_id')
+            x = xodim_olish(xodim_id)
+            xodim_ism = x[1] if x else 'Unknown'
             xodim_ochirish(xodim_id)
+
+            # AUDIT LOG
+            user_id = update.effective_user.id
+            user_ism = update.effective_user.first_name or 'Admin'
+            tafsilot = f"Xodim o'chirildi: {xodim_ism}"
+            audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
             await update.message.reply_text("🗑 Xodim o'chirildi!", reply_markup=adm_menu_kb())
             return ADM_MENU
         x = xodim_olish(xodim_id)
@@ -1339,6 +1382,13 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     motivatsiya = generate_keldi_motivation(xodim, kechikish, streak)
 
+    # AUDIT LOG
+    user_id = update.effective_user.id
+    user_ism = update.effective_user.first_name or 'Xodim'
+    tafsilot = f"Keldi: {stat[0] if stat else 'N/A'} | Masofa: {m}m"
+    audit_log_qoshish(komp_id, 'KELDI', tafsilot, xodim_id, rasm_id if is_photo else None,
+                     rasm_id if not is_photo else None, user_id, user_ism)
+
     await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', m, rasm_id, is_photo)
     await update.message.reply_text(f"✅ Davomat qabul qilindi!\n\n{motivatsiya}",
                                      parse_mode='Markdown', reply_markup=xod_menu_kb())
@@ -1399,6 +1449,14 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ish_soat = stat[2] if stat and stat[2] else 0
 
     motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, float(ish_soat), streak)
+
+    # AUDIT LOG
+    user_id = update.effective_user.id
+    user_ism = update.effective_user.first_name or 'Xodim'
+    s = int(ish_soat); d = int((ish_soat - s) * 60)
+    tafsilot = f"Ketdi: {ketdi_vaqt} | Ish vaqti: {s}s {d}d | Masofa: {m}m"
+    audit_log_qoshish(komp_id, 'KETDI', tafsilot, xodim_id, rasm_id if is_photo else None,
+                     rasm_id if not is_photo else None, user_id, user_ism)
 
     await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', m, rasm_id, is_photo)
     await update.message.reply_text(f"✅ Chiqish belgilandi!\n\n{motivatsiya}",

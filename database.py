@@ -83,6 +83,13 @@ def create_tables():
     )''')
     cur.execute("INSERT INTO sozlamalar(kalit,qiymat) VALUES('murojaat_raqam','919712222') ON CONFLICT(kalit) DO NOTHING")
 
+    cur.execute('''CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY, kompaniya_id INTEGER REFERENCES kompaniyalar(id),
+        xodim_id INTEGER REFERENCES xodimlar(id),
+        amal TEXT, tafsilot TEXT, vaqt TEXT, rasm_id TEXT, video_id TEXT,
+        user_id BIGINT, user_ism TEXT
+    )''')
+
     conn.commit(); cur.close(); conn.close()
 
 # ========== SOZLAMALAR ==========
@@ -580,6 +587,37 @@ def kompaniya_hisobot(komp_id):
     cur.close(); conn.close()
     fayl = f"hisobot_{nomi}.xlsx"
     wb.save(fayl); return fayl
+
+# ========== AUDIT LOG ==========
+
+def audit_log_qoshish(komp_id, amal, tafsilot, xodim_id=None, rasm_id=None, video_id=None, user_id=None, user_ism=None):
+    """Audit log'ga amal qo'shish"""
+    conn = connect(); cur = conn.cursor()
+    vaqt = hozir().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute('''INSERT INTO audit_log(kompaniya_id,xodim_id,amal,tafsilot,vaqt,rasm_id,video_id,user_id,user_ism)
+                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                (komp_id, xodim_id, amal, tafsilot, vaqt, rasm_id, video_id, user_id, user_ism))
+    conn.commit(); cur.close(); conn.close()
+
+def audit_log_olish(komp_id, limit=50, offset=0):
+    """Kompaniya'ning audit log'larini olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT id,xodim_id,amal,tafsilot,vaqt,rasm_id,video_id,user_ism
+                  FROM audit_log WHERE kompaniya_id=%s
+                  ORDER BY vaqt DESC LIMIT %s OFFSET %s''',
+                (komp_id, limit, offset))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
+
+def super_admin_audit_log(limit=100, offset=0):
+    """Super admin - barcha kompaniya audit log'lari"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT k.nomi,al.amal,al.tafsilot,al.vaqt,al.user_ism,al.xodim_id,x.ism
+                  FROM audit_log al
+                  JOIN kompaniyalar k ON al.kompaniya_id=k.id
+                  LEFT JOIN xodimlar x ON al.xodim_id=x.id
+                  ORDER BY al.vaqt DESC LIMIT %s OFFSET %s''',
+                (limit, offset))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
 
 # ========== MOTIVATSIYA TIZIMI ==========
 
