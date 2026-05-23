@@ -740,6 +740,3 @@ def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
     else:
         return (f"❌ *JIDDIY ERTA KETISH!* ({abs(farq)} daqiqa oldin)\n"
                 f"Bu intizom buzilishi! HR va admin xabardor qilindi! 🚫")
-
-create_tables()
-print("Baza tayyor!")
