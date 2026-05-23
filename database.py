@@ -5,7 +5,7 @@ import openpyxl
 import os
 
 TASHKENT = pytz.timezone('Asia/Tashkent')
-SUPER_ADMIN_KOD = os.environ.get("SUPER_ADMIN_KOD", "0001")
+SUPER_ADMIN_KOD = os.environ.get("SUPER_ADMIN_KOD", "0001")  # Boshlang'ich kod
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://postgres:RdcrgixOGANtWvspNqPdFVPhyUkBmjeS@kodama.proxy.rlwy.net:59039/railway"
@@ -106,7 +106,11 @@ def super_admin_tekshir(telefon):
     r = cur.fetchone(); cur.close(); conn.close(); return r
 
 def super_admin_kod_tekshir(kod):
-    return kod == SUPER_ADMIN_KOD
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT kod FROM super_adminlar LIMIT 1")
+    r = cur.fetchone(); cur.close(); conn.close()
+    db_kod = r[0] if r else SUPER_ADMIN_KOD
+    return kod == db_kod
 
 def super_admin_telegram_saqlash(telefon, telegram_id):
     conn = connect(); cur = conn.cursor()
@@ -123,7 +127,9 @@ def super_admin_id_tekshir(telegram_id):
     r = cur.fetchone(); cur.close(); conn.close(); return r is not None
 
 def super_admin_kod_ozgartir(yangi_kod):
-    global SUPER_ADMIN_KOD; SUPER_ADMIN_KOD = yangi_kod
+    conn = connect(); cur = conn.cursor()
+    cur.execute("UPDATE super_adminlar SET kod=%s", (yangi_kod,))
+    conn.commit(); cur.close(); conn.close()
 
 def super_admin_telefon_ozgartir(telegram_id, tel):
     conn = connect(); cur = conn.cursor()

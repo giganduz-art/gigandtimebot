@@ -1,5 +1,5 @@
 import os, math, logging, random, string
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 import pytz
 from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
                       InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove)
@@ -10,7 +10,9 @@ from database import *
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8728106880:AAH0lQlLcgNI0czxmEbCJXIDE6vVmTS47fU")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable not set!")
 TASHKENT = pytz.timezone('Asia/Tashkent')
 
 def random_kod(n=6):
@@ -102,11 +104,6 @@ def xod_menu_kb():
         ["📝 Sababli so'rov", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
-def start_kb():
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton("▶️ Botni ishga tushirish")]],
-        resize_keyboard=True, one_time_keyboard=True
-    )
 
 # ==================== START ====================
 
@@ -1504,6 +1501,15 @@ async def tekshiruv_job(context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(aid, xabar, parse_mode='Markdown')
                 except: pass
 
+async def live_location_timeout_job(context: ContextTypes.DEFAULT_TYPE):
+    """8 soat o'tgan live lokatsiyalarni o'chirish"""
+    conn = connect(); cur = conn.cursor()
+    vaqt_limit = (hozir() - timedelta(hours=8)).strftime("%H:%M:%S")
+    sana = hozir().strftime("%Y-%m-%d")
+    cur.execute('''UPDATE live_lokatsiyalar SET faol=FALSE
+                  WHERE faol=TRUE AND vaqt < %s''', (vaqt_limit,))
+    conn.commit(); cur.close(); conn.close()
+
 async def haftalik_hisobot_job(context: ContextTypes.DEFAULT_TYPE):
     """Juma kuni haftalik hisobot"""
     kompaniyalar = haftalik_davomat_kompaniyalar()
@@ -1654,6 +1660,8 @@ def main():
     jq = app.job_queue
     # Har 30 daqiqada joylashuv tekshiruvi
     jq.run_repeating(tekshiruv_job, interval=1800, first=60)
+    # 8 soat live location timeout
+    jq.run_repeating(live_location_timeout_job, interval=600, first=60)
     # Har daqiqa eslatma (ish boshlanishi va tug'ilgan kun)
     jq.run_repeating(eslatma_job, interval=60, first=30)
     # Juma kuni soat 18:00 da haftalik hisobot
