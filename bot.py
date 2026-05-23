@@ -1782,23 +1782,32 @@ async def live_location_update(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def tekshiruv_job(context: ContextTypes.DEFAULT_TYPE):
     """Har 30 daqiqada xodimlar joylashuvini tekshirish"""
-    xodimlar = barcha_live_xodimlar()
-    for x in xodimlar:
-        xodim_id, komp_id, lat, lon, ism, telegram_id, k_lat, k_lon, k_radius, admin_id, komp_nomi = x
-        if not lat or not lon: continue
-        masofa = masofa_hisob(lat, lon, k_lat, k_lon)
-        if masofa > k_radius:
-            vaqt = hozir().strftime("%H:%M")
-            xabar = (f"⚠️ *XODIM ISH JOYIDA YO'Q!*\n\n"
-                    f"🏢 {komp_nomi}\n👤 {ism}\n"
-                    f"📏 Masofa: {masofa}m (ruxsat: {k_radius}m)\n"
-                    f"⏰ Vaqt: {vaqt}")
-            hr_list = hr_idlari(komp_id)
-            sa_list = barcha_super_admin_idlar()
-            for aid in list(set(([admin_id] if admin_id else []) + hr_list + sa_list)):
-                try:
-                    await context.bot.send_message(aid, xabar, parse_mode='Markdown')
-                except: pass
+    try:
+        xodimlar = barcha_live_xodimlar()
+        logger.info(f"🔍 Tekshiruv job: {len(xodimlar)} xodim topildi")
+
+        for x in xodimlar:
+            xodim_id, komp_id, lat, lon, ism, telegram_id, k_lat, k_lon, k_radius, admin_id, komp_nomi = x
+            if not lat or not lon: continue
+            masofa = masofa_hisob(lat, lon, k_lat, k_lon)
+            logger.info(f"📍 {ism}: {masofa}m (limit: {k_radius}m)")
+
+            if masofa > k_radius:
+                vaqt = hozir().strftime("%H:%M")
+                xabar = (f"⚠️ *XODIM ISH JOYIDA YO'Q!*\n\n"
+                        f"🏢 {komp_nomi}\n👤 {ism}\n"
+                        f"📏 Masofa: {masofa}m (ruxsat: {k_radius}m)\n"
+                        f"⏰ Vaqt: {vaqt}")
+                hr_list = hr_idlari(komp_id)
+                sa_list = barcha_super_admin_idlar()
+                for aid in list(set(([admin_id] if admin_id else []) + hr_list + sa_list)):
+                    try:
+                        await context.bot.send_message(aid, xabar, parse_mode='Markdown')
+                        logger.info(f"✅ Xabar yuborildi: {aid}")
+                    except Exception as e:
+                        logger.error(f"❌ Xabar yuborishmadi {aid}: {e}")
+    except Exception as e:
+        logger.error(f"❌ Tekshiruv job xatosi: {e}")
 
 async def live_location_timeout_job(context: ContextTypes.DEFAULT_TYPE):
     """8 soat o'tgan live lokatsiyalarni o'chirish"""
