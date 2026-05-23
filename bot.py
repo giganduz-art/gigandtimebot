@@ -53,7 +53,7 @@ TASHKENT = pytz.timezone('Asia/Tashkent')
     XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM,
     XOD_KETDI_GPS, XOD_KETDI_RASM,
     XOD_SABAB_SANA, XOD_SABAB_MATN,
-) = range(42)
+) = range(40)
 
 # ==================== YORDAMCHI ====================
 
