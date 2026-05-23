@@ -35,15 +35,13 @@ def kechikish_format(daqiqalar):
 def create_tables():
     conn = connect()
     cur = conn.cursor()
-
     cur.execute('''CREATE TABLE IF NOT EXISTS super_adminlar (
         id SERIAL PRIMARY KEY,
         telefon TEXT NOT NULL,
-        telegram_id BIGINT UNIQUE,
+        telegram_id BIGINT,
         ism TEXT DEFAULT 'Super Admin',
         kod TEXT DEFAULT '0001'
     )''')
-
     cur.execute('''CREATE TABLE IF NOT EXISTS kompaniyalar (
         id SERIAL PRIMARY KEY,
         nomi TEXT NOT NULL,
@@ -60,12 +58,7 @@ def create_tables():
         face_id_aktiv BOOLEAN DEFAULT FALSE,
         hikvision_aktiv BOOLEAN DEFAULT FALSE
     )''')
-
-    # admin_kod ustunini qo'shish (agar yo'q bo'lsa)
-    cur.execute("""
-        ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS admin_kod TEXT DEFAULT '1234'
-    """)
-
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS admin_kod TEXT DEFAULT '1234'")
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
         id SERIAL PRIMARY KEY,
         ism TEXT NOT NULL,
@@ -81,7 +74,6 @@ def create_tables():
         rol TEXT DEFAULT 'xodim',
         holat TEXT DEFAULT 'faol'
     )''')
-
     cur.execute('''CREATE TABLE IF NOT EXISTS davomat (
         id SERIAL PRIMARY KEY,
         xodim_id INTEGER REFERENCES xodimlar(id),
@@ -98,7 +90,6 @@ def create_tables():
         kiritdi TEXT DEFAULT 'xodim',
         kiritdi_id BIGINT
     )''')
-
     cur.execute('''CREATE TABLE IF NOT EXISTS sababli_sorovlar (
         id SERIAL PRIMARY KEY,
         xodim_id INTEGER REFERENCES xodimlar(id),
@@ -107,18 +98,15 @@ def create_tables():
         sabab TEXT,
         holat TEXT DEFAULT 'kutilmoqda'
     )''')
-
     conn.commit()
-    cur.close()
-    conn.close()
+    cur.close(); conn.close()
 
 # ==================== SUPER ADMIN ====================
 
 def super_admin_tekshir(telefon):
     conn = connect()
     cur = conn.cursor()
-    cur.execute("SELECT id, ism, telegram_id FROM super_adminlar WHERE telefon LIKE %s",
-                (f"%{telefon[-9:]}%",))
+    cur.execute("SELECT id, ism, telegram_id FROM super_adminlar WHERE telefon LIKE %s", (f"%{telefon[-9:]}%",))
     row = cur.fetchone()
     cur.close(); conn.close()
     return row
@@ -132,11 +120,9 @@ def super_admin_telegram_saqlash(telefon, telegram_id):
     cur.execute("SELECT id FROM super_adminlar WHERE telefon LIKE %s", (f"%{telefon[-9:]}%",))
     row = cur.fetchone()
     if row:
-        cur.execute("UPDATE super_adminlar SET telegram_id=%s WHERE telefon LIKE %s",
-                    (telegram_id, f"%{telefon[-9:]}%"))
+        cur.execute("UPDATE super_adminlar SET telegram_id=%s WHERE telefon LIKE %s", (telegram_id, f"%{telefon[-9:]}%"))
     else:
-        cur.execute("INSERT INTO super_adminlar (telefon, telegram_id) VALUES (%s, %s)",
-                    (telefon, telegram_id))
+        cur.execute("INSERT INTO super_adminlar (telefon, telegram_id) VALUES (%s, %s)", (telefon, telegram_id))
     conn.commit()
     cur.close(); conn.close()
 
@@ -152,6 +138,20 @@ def super_admin_kod_ozgartir(yangi_kod):
     global SUPER_ADMIN_KOD
     SUPER_ADMIN_KOD = yangi_kod
 
+def super_admin_telefon_ozgartir(telegram_id, yangi_telefon):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE super_adminlar SET telefon=%s WHERE telegram_id=%s", (yangi_telefon, telegram_id))
+    conn.commit()
+    cur.close(); conn.close()
+
+def super_admin_ism_ozgartir(telegram_id, yangi_ism):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE super_adminlar SET ism=%s WHERE telegram_id=%s", (yangi_ism, telegram_id))
+    conn.commit()
+    cur.close(); conn.close()
+
 def barcha_super_adminlar():
     conn = connect()
     cur = conn.cursor()
@@ -166,7 +166,7 @@ def super_admin_qoshish(telefon, ism='Super Admin'):
     cur.execute("SELECT id FROM super_adminlar WHERE telefon LIKE %s", (f"%{telefon[-9:]}%",))
     if cur.fetchone():
         cur.close(); conn.close()
-        return False  # allaqachon bor
+        return False
     cur.execute("INSERT INTO super_adminlar (telefon, ism) VALUES (%s, %s)", (telefon, ism))
     conn.commit()
     cur.close(); conn.close()
@@ -178,6 +178,14 @@ def super_admin_ochirish(sa_id):
     cur.execute("DELETE FROM super_adminlar WHERE id=%s", (sa_id,))
     conn.commit()
     cur.close(); conn.close()
+
+def super_admin_olish(telegram_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT id, telefon, ism FROM super_adminlar WHERE telegram_id=%s", (telegram_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row
 
 # ==================== KOMPANIYALAR ====================
 
@@ -191,6 +199,16 @@ def kompaniya_yaratish(nomi, admin_telefon, admin_kod='1234'):
     conn.commit()
     cur.close(); conn.close()
     return komp_id
+
+def kompaniya_ochirish(komp_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sababli_sorovlar WHERE kompaniya_id=%s", (komp_id,))
+    cur.execute("DELETE FROM davomat WHERE kompaniya_id=%s", (komp_id,))
+    cur.execute("DELETE FROM xodimlar WHERE kompaniya_id=%s", (komp_id,))
+    cur.execute("DELETE FROM kompaniyalar WHERE id=%s", (komp_id,))
+    conn.commit()
+    cur.close(); conn.close()
 
 def barcha_kompaniyalar():
     conn = connect()
@@ -256,9 +274,7 @@ def get_gps(komp_id):
     cur.execute("SELECT gps_lat, gps_lon, gps_radius FROM kompaniyalar WHERE id=%s", (komp_id,))
     row = cur.fetchone()
     cur.close(); conn.close()
-    if row:
-        return row[0], row[1], row[2]
-    return 41.299496, 69.240073, 200
+    return row if row else (41.299496, 69.240073, 200)
 
 # ==================== XODIMLAR ====================
 
@@ -266,22 +282,30 @@ def xodim_qoshish(ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol,
     conn = connect()
     cur = conn.cursor()
     sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''INSERT INTO xodimlar
-        (ism, telefon, lavozim, oylik, ish_boshlanish, ish_tugash,
-         kompaniya_id, rol, kod, ishga_kirgan)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
-        (ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol, kod, sana))
+    cur.execute('''INSERT INTO xodimlar (ism, telefon, lavozim, oylik, ish_boshlanish,
+                  ish_tugash, kompaniya_id, rol, kod, ishga_kirgan)
+                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                (ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol, kod, sana))
     xodim_id = cur.fetchone()[0]
     conn.commit()
     cur.close(); conn.close()
     return xodim_id
 
+def xodim_ochirish(xodim_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sababli_sorovlar WHERE xodim_id=%s", (xodim_id,))
+    cur.execute("DELETE FROM davomat WHERE xodim_id=%s", (xodim_id,))
+    cur.execute("DELETE FROM xodimlar WHERE id=%s", (xodim_id,))
+    conn.commit()
+    cur.close(); conn.close()
+
 def kompaniya_xodimlari(komp_id):
     conn = connect()
     cur = conn.cursor()
-    cur.execute('''SELECT id, ism, lavozim, telefon, oylik,
-                  ish_boshlanish, ish_tugash, rol, kod, holat
-                  FROM xodimlar WHERE kompaniya_id=%s ORDER BY id''', (komp_id,))
+    cur.execute('''SELECT id, ism, lavozim, telefon, oylik, ish_boshlanish,
+                  ish_tugash, rol, kod, holat FROM xodimlar
+                  WHERE kompaniya_id=%s ORDER BY id''', (komp_id,))
     rows = cur.fetchall()
     cur.close(); conn.close()
     return rows
@@ -289,8 +313,8 @@ def kompaniya_xodimlari(komp_id):
 def xodim_olish(xodim_id):
     conn = connect()
     cur = conn.cursor()
-    cur.execute('''SELECT id, ism, telefon, lavozim, oylik,
-                  ish_boshlanish, ish_tugash, rol, kod, kompaniya_id, holat
+    cur.execute('''SELECT id, ism, telefon, lavozim, oylik, ish_boshlanish,
+                  ish_tugash, rol, kod, kompaniya_id, holat
                   FROM xodimlar WHERE id=%s''', (xodim_id,))
     row = cur.fetchone()
     cur.close(); conn.close()
@@ -347,18 +371,17 @@ def keldi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
         cur.close(); conn.close()
         return "⚠️ Bugun allaqachon belgilangan!"
     cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=%s", (xodim_id,))
-    xodim = cur.fetchone()
+    x = cur.fetchone()
     kechikish = 0
-    if xodim:
+    if x:
         try:
-            belgi = datetime.strptime(xodim[0], "%H:%M")
+            belgi = datetime.strptime(x[0], "%H:%M")
             keldi_v = datetime.strptime(vaqt, "%H:%M")
             if keldi_v > belgi:
                 kechikish = int((keldi_v - belgi).total_seconds() / 60)
         except: pass
     cur.execute('''INSERT INTO davomat (xodim_id, kompaniya_id, sana, keldi, kechikish, kiritdi, kiritdi_id)
-                  VALUES (%s, %s, %s, %s, %s, %s, %s)''',
-                (xodim_id, komp_id, sana, vaqt, kechikish, kiritdi, kiritdi_id))
+                  VALUES (%s,%s,%s,%s,%s,%s,%s)''', (xodim_id, komp_id, sana, vaqt, kechikish, kiritdi, kiritdi_id))
     conn.commit()
     cur.close(); conn.close()
     if kechikish > 0:
@@ -385,8 +408,8 @@ def ketdi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
         return "❌ Avval keldi belgilanmagan!"
     try:
         keldi = datetime.strptime(row[0], "%H:%M")
-        ketdi = datetime.strptime(vaqt, "%H:%M")
-        daqiqalar = int((ketdi - keldi).total_seconds() / 60)
+        ketdi_v = datetime.strptime(vaqt, "%H:%M")
+        daqiqalar = int((ketdi_v - keldi).total_seconds() / 60)
         ish_soat = round(daqiqalar / 60, 2)
         soat = daqiqalar // 60
         daqiqa = daqiqalar % 60
@@ -395,8 +418,7 @@ def ketdi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
         ish_soat = 0
         ish_matn = "0 soat 0 daqiqa"
     cur.execute('''UPDATE davomat SET ketdi=%s, ish_soat=%s, kiritdi=%s, kiritdi_id=%s
-                  WHERE xodim_id=%s AND sana=%s''',
-                (vaqt, ish_soat, kiritdi, kiritdi_id, xodim_id, sana))
+                  WHERE xodim_id=%s AND sana=%s''', (vaqt, ish_soat, kiritdi, kiritdi_id, xodim_id, sana))
     conn.commit()
     cur.close(); conn.close()
     return f"🚪 Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {ish_matn}"
@@ -409,32 +431,38 @@ def ketdi_rasm_saqlash(xodim_id, rasm_id):
     conn.commit()
     cur.close(); conn.close()
 
+def davomat_tahrirlash(davomat_id, maydon, qiymat):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(f"UPDATE davomat SET {maydon}=%s WHERE id=%s", (qiymat, davomat_id))
+    conn.commit()
+    cur.close(); conn.close()
+
 def xodim_davomati(xodim_id, oy=None):
     conn = connect()
     cur = conn.cursor()
     if oy:
-        cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
+        cur.execute('''SELECT id, sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
                       FROM davomat WHERE xodim_id=%s AND sana LIKE %s ORDER BY sana''',
                     (xodim_id, f"%{oy}%"))
     else:
-        cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
-                      FROM davomat WHERE xodim_id=%s ORDER BY sana''', (xodim_id,))
+        cur.execute('''SELECT id, sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
+                      FROM davomat WHERE xodim_id=%s ORDER BY sana DESC''', (xodim_id,))
     rows = cur.fetchall()
     cur.close(); conn.close()
     return rows
 
-def kompaniya_davomati(komp_id, oy=None):
+def kompaniya_davomati(komp_id, sana=None):
     conn = connect()
     cur = conn.cursor()
-    if oy:
-        cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
+    if sana:
+        cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.id
                       FROM davomat d JOIN xodimlar x ON d.xodim_id=x.id
-                      WHERE d.kompaniya_id=%s AND d.sana LIKE %s ORDER BY d.sana''',
-                    (komp_id, f"%{oy}%"))
+                      WHERE d.kompaniya_id=%s AND d.sana=%s ORDER BY x.ism''', (komp_id, sana))
     else:
-        cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
+        cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.id
                       FROM davomat d JOIN xodimlar x ON d.xodim_id=x.id
-                      WHERE d.kompaniya_id=%s ORDER BY d.sana''', (komp_id,))
+                      WHERE d.kompaniya_id=%s ORDER BY d.sana DESC, x.ism''', (komp_id,))
     rows = cur.fetchall()
     cur.close(); conn.close()
     return rows
@@ -464,7 +492,7 @@ def manual_davomat(xodim_id, komp_id, sana, keldi_vaqt, ketdi_vaqt, holat, izoh,
     else:
         cur.execute('''INSERT INTO davomat (xodim_id, kompaniya_id, sana, keldi, ketdi, ish_soat,
                       kechikish, holat, izoh, kiritdi, kiritdi_id)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                      VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                     (xodim_id, komp_id, sana, keldi_vaqt, ketdi_vaqt, ish_soat,
                      kechikish, holat, izoh, kiritdi_ism, kiritdi_id))
     conn.commit()
@@ -477,7 +505,7 @@ def sababli_sorov_saqlash(xodim_id, komp_id, sana, sabab):
     conn = connect()
     cur = conn.cursor()
     cur.execute('''INSERT INTO sababli_sorovlar (xodim_id, kompaniya_id, sana, sabab)
-                  VALUES (%s, %s, %s, %s) RETURNING id''', (xodim_id, komp_id, sana, sabab))
+                  VALUES (%s,%s,%s,%s) RETURNING id''', (xodim_id, komp_id, sana, sabab))
     sorov_id = cur.fetchone()[0]
     conn.commit()
     cur.close(); conn.close()
@@ -493,7 +521,7 @@ def sababli_sorov_yangilash(sorov_id, holat, xodim_id, sana, sabab):
             cur.execute("UPDATE davomat SET holat='sababli', izoh=%s WHERE xodim_id=%s AND sana=%s",
                        (sabab, xodim_id, sana))
         else:
-            cur.execute("INSERT INTO davomat (xodim_id, sana, holat, izoh) VALUES (%s, %s, 'sababli', %s)",
+            cur.execute("INSERT INTO davomat (xodim_id, sana, holat, izoh) VALUES (%s,%s,'sababli',%s)",
                        (xodim_id, sana, sabab))
     conn.commit()
     cur.close(); conn.close()
@@ -505,9 +533,10 @@ def super_admin_hisobot():
     cur = conn.cursor()
     wb = openpyxl.Workbook()
 
+    # Varaq 1: Kompaniyalar
     ws1 = wb.active
     ws1.title = "Kompaniyalar"
-    ws1.append(["#", "Kompaniya", "Admin telefon", "Holat", "Xodimlar", "Yaratilgan"])
+    ws1.append(["#", "Kompaniya", "Admin telefon", "Holat", "Xodimlar soni", "Yaratilgan"])
     cur.execute("SELECT id, nomi, admin_telefon, holat, yaratilgan FROM kompaniyalar ORDER BY id")
     kompaniyalar = cur.fetchall()
     for i, k in enumerate(kompaniyalar, 1):
@@ -515,14 +544,16 @@ def super_admin_hisobot():
         soni = cur.fetchone()[0]
         ws1.append([i, k[1], k[2], k[3], soni, k[4]])
 
+    # Varaq 2: Barcha xodimlar
     ws2 = wb.create_sheet("Barcha xodimlar")
-    ws2.append(["#", "Kompaniya", "Ism", "Lavozim", "Telefon", "Oylik", "Ish vaqti", "Rol"])
+    ws2.append(["#", "Kompaniya", "Ism", "Lavozim", "Telefon", "Oylik", "Ish vaqti", "Rol", "Holat"])
     cur.execute('''SELECT k.nomi, x.ism, x.lavozim, x.telefon, x.oylik,
-                  x.ish_boshlanish, x.ish_tugash, x.rol
+                  x.ish_boshlanish, x.ish_tugash, x.rol, x.holat
                   FROM xodimlar x JOIN kompaniyalar k ON x.kompaniya_id=k.id ORDER BY k.id, x.id''')
     for i, x in enumerate(cur.fetchall(), 1):
-        ws2.append([i, x[0], x[1], x[2], x[3], x[4], f"{x[5]}-{x[6]}", x[7]])
+        ws2.append([i, x[0], x[1], x[2], x[3], x[4], f"{x[5]}-{x[6]}", x[7], x[8]])
 
+    # Varaq 3: Barcha davomat
     ws3 = wb.create_sheet("Barcha davomat")
     ws3.append(["#", "Kompaniya", "Xodim", "Sana", "Keldi", "Ketdi", "Ish vaqti", "Kechikish", "Holat"])
     cur.execute('''SELECT k.nomi, x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat
@@ -531,6 +562,7 @@ def super_admin_hisobot():
     for i, d in enumerate(cur.fetchall(), 1):
         ws3.append([i, d[0], d[1], d[2], d[3], d[4], soat_format(d[5]), kechikish_format(d[6]), d[7]])
 
+    # Varaq 4: Statistika
     ws4 = wb.create_sheet("Statistika")
     ws4.append(["Kompaniya", "Jami xodim", "Bugun kelgan", "O'rtacha kechikish", "Holat"])
     bugun = hozir().strftime("%Y-%m-%d")
@@ -552,30 +584,37 @@ def kompaniya_hisobot(komp_id):
     conn = connect()
     cur = conn.cursor()
     cur.execute("SELECT nomi FROM kompaniyalar WHERE id=%s", (komp_id,))
-    komp_nomi = cur.fetchone()[0]
+    row = cur.fetchone()
+    if not row:
+        return None
+    komp_nomi = row[0]
     wb = openpyxl.Workbook()
 
+    # Varaq 1: Xodimlar
     ws1 = wb.active
     ws1.title = "Xodimlar"
-    ws1.append(["#", "Ism", "Lavozim", "Telefon", "Oylik", "Ish vaqti", "Rol"])
-    cur.execute('''SELECT id, ism, lavozim, telefon, oylik, ish_boshlanish, ish_tugash, rol
+    ws1.append(["#", "Ism", "Lavozim", "Telefon", "Oylik", "Ish vaqti", "Rol", "Holat"])
+    cur.execute('''SELECT id, ism, lavozim, telefon, oylik, ish_boshlanish, ish_tugash, rol, holat
                   FROM xodimlar WHERE kompaniya_id=%s ORDER BY id''', (komp_id,))
     xodimlar = cur.fetchall()
     for i, x in enumerate(xodimlar, 1):
-        ws1.append([i, x[1], x[2], x[3], x[4], f"{x[5]}-{x[6]}", x[7]])
+        ws1.append([i, x[1], x[2], x[3], x[4], f"{x[5]}-{x[6]}", x[7], x[8]])
 
+    # Varaq 2: Davomat
     ws2 = wb.create_sheet("Davomat")
     ws2.append(["#", "Xodim", "Sana", "Keldi", "Ketdi", "Ish vaqti", "Kechikish", "Holat", "Izoh"])
     cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
                   FROM davomat d JOIN xodimlar x ON d.xodim_id=x.id
-                  WHERE d.kompaniya_id=%s ORDER BY d.sana, x.ism''', (komp_id,))
+                  WHERE d.kompaniya_id=%s ORDER BY d.sana DESC, x.ism''', (komp_id,))
     for i, d in enumerate(cur.fetchall(), 1):
         ws2.append([i, d[0], d[1], d[2], d[3], soat_format(d[4]), kechikish_format(d[5]), d[6], d[7] or "—"])
 
+    # Varaq 3: Statistika
     ws3 = wb.create_sheet("Statistika")
     ws3.append(["Xodim", "Lavozim", "Jami kun", "Jami ish soat", "O'rtacha kechikish", "Kech kelgan"])
     for x in xodimlar:
-        cur.execute('''SELECT COUNT(*), SUM(ish_soat), AVG(kechikish), COUNT(CASE WHEN kechikish>0 THEN 1 END)
+        cur.execute('''SELECT COUNT(*), SUM(ish_soat), AVG(kechikish),
+                      COUNT(CASE WHEN kechikish>0 THEN 1 END)
                       FROM davomat WHERE xodim_id=%s''', (x[0],))
         s = cur.fetchone()
         ws3.append([x[1], x[2], s[0] or 0, soat_format(s[1] or 0), kechikish_format(s[2] or 0), s[3] or 0])
