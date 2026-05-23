@@ -89,7 +89,7 @@ def adm_menu_kb():
     return ReplyKeyboardMarkup([
         ["👥 Xodimlar", "📅 Davomat"],
         ["📊 Hisobot", "📍 GPS sozlash"],
-        ["🏠 Bosh menu"]
+        ["📋 Audit Log", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
 def hr_menu_kb():
@@ -264,7 +264,8 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matn == "📋 Audit Log":
         logs = super_admin_audit_log(limit=20)
         if not logs:
-            await update.message.reply_text("📋 Hozircha audit log yo'q.")
+            await update.message.reply_text("📋 Hozircha audit log yo'q.",
+                reply_markup=ReplyKeyboardMarkup([["📥 Export Excel", "🔙 Orqaga"]], resize_keyboard=True))
         else:
             xabar = "📋 *OXIRGI 20 AMAL:*\n\n"
             for log in logs:
@@ -273,7 +274,22 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 xabar += f"📌 {amal} | {vaqt}\n"
                 xabar += f"👤 {user_ism}\n"
                 xabar += f"📝 {tafsilot}\n━━━━━━━━━━━━\n"
-            await update.message.reply_text(xabar, parse_mode='Markdown')
+            await update.message.reply_text(xabar, parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([["📥 Export Excel", "🔙 Orqaga"]], resize_keyboard=True))
+
+        context.user_data['audit_view'] = True
+        return SA_MENU
+
+    elif matn == "📥 Export Excel" and context.user_data.get('audit_view'):
+        await update.message.reply_text("⏳ Excel tayyorlanmoqda...")
+        try:
+            fayl = export_audit_log_excel()
+            with open(fayl, 'rb') as f:
+                await update.message.reply_document(f, filename=fayl)
+            os.remove(fayl)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}")
+        context.user_data.pop('audit_view', None)
         return SA_MENU
 
     elif matn == "🔐 Sozlamalar":
@@ -802,6 +818,37 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
         return ADM_GPS_LOK
+
+    elif matn == "📋 Audit Log":
+        komp_id = context.user_data.get('komp_id')
+        logs = audit_log_olish(komp_id, limit=15)
+        if not logs:
+            await update.message.reply_text("📋 Hozircha audit log yo'q.",
+                reply_markup=ReplyKeyboardMarkup([["📥 Export Excel", "🔙 Orqaga"]], resize_keyboard=True))
+        else:
+            xabar = "📋 *OXIRGI 15 AMAL:*\n\n"
+            for log in logs:
+                xodim_id, amal, tafsilot, vaqt, rasm_id, video_id, user_ism = log
+                xabar += f"📌 {amal} | {vaqt}\n"
+                xabar += f"👤 {user_ism}\n"
+                xabar += f"📝 {tafsilot}\n━━━━━━━━━━━━\n"
+            await update.message.reply_text(xabar, parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([["📥 Export Excel", "🔙 Orqaga"]], resize_keyboard=True))
+        context.user_data['audit_view'] = 'adm'
+        return ADM_MENU
+
+    elif matn == "📥 Export Excel" and context.user_data.get('audit_view') == 'adm':
+        komp_id = context.user_data.get('komp_id')
+        await update.message.reply_text("⏳ Excel tayyorlanmoqda...")
+        try:
+            fayl = export_audit_log_excel(komp_id)
+            with open(fayl, 'rb') as f:
+                await update.message.reply_document(f, filename=fayl)
+            os.remove(fayl)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}")
+        context.user_data.pop('audit_view', None)
+        return ADM_MENU
 
     elif matn == "🏠 Bosh menu":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())

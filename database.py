@@ -619,6 +619,35 @@ def super_admin_audit_log(limit=100, offset=0):
                 (limit, offset))
     r = cur.fetchall(); cur.close(); conn.close(); return r
 
+def export_audit_log_excel(komp_id=None):
+    """Audit log'ni Excel'ga export qilish"""
+    conn = connect(); cur = conn.cursor()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Audit Log"
+    ws.append(["#", "Kompaniya", "Amal", "Xodim", "Vaqt", "User", "Tafsilot"])
+
+    if komp_id:
+        cur.execute('''SELECT al.amal,k.nomi,x.ism,al.vaqt,al.user_ism,al.tafsilot
+                      FROM audit_log al
+                      JOIN kompaniyalar k ON al.kompaniya_id=k.id
+                      LEFT JOIN xodimlar x ON al.xodim_id=x.id
+                      WHERE al.kompaniya_id=%s ORDER BY al.vaqt DESC''', (komp_id,))
+    else:
+        cur.execute('''SELECT al.amal,k.nomi,x.ism,al.vaqt,al.user_ism,al.tafsilot
+                      FROM audit_log al
+                      JOIN kompaniyalar k ON al.kompaniya_id=k.id
+                      LEFT JOIN xodimlar x ON al.xodim_id=x.id
+                      ORDER BY al.vaqt DESC''')
+
+    for i, row in enumerate(cur.fetchall(), 1):
+        amal, komp_nomi, xodim_ism, vaqt, user_ism, tafsilot = row
+        ws.append([i, komp_nomi, amal, xodim_ism or '—', vaqt, user_ism, tafsilot[:50]])
+
+    cur.close(); conn.close()
+    fayl = f"audit_log_{komp_id or 'all'}.xlsx"
+    wb.save(fayl); return fayl
+
 # ========== MOTIVATSIYA TIZIMI ==========
 
 def xodim_streak_olish(xodim_id):
