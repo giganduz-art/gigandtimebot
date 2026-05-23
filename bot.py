@@ -1,659 +1,1149 @@
-import psycopg2
-import psycopg2.extras
+import os
+import math
+import logging
 from datetime import datetime
 import pytz
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-import os
-
-TASHKENT = pytz.timezone('Asia/Tashkent')
-SUPER_ADMIN_KOD = os.environ.get("SUPER_ADMIN_KOD", "0001")
-
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:RdcrgixOGANtWvspNqPdFVPhyUkBmjeS@kodama.proxy.rlwy.net:59039/railway"
+from telegram import (
+    Update, ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+)
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ConversationHandler, filters, ContextTypes
+)
+from database import (
+    create_tables, hozir,
+    super_admin_tekshir, super_admin_kod_tekshir, super_admin_telegram_saqlash,
+    super_admin_id_tekshir, super_admin_kod_ozgartir,
+    kompaniya_yaratish, barcha_kompaniyalar, kompaniya_olish,
+    kompaniya_holat_ozgartir, kompaniya_funksiya_ozgartir, kompaniya_tahrirlash,
+    admin_telefon_orqali_kompaniya, admin_id_saqlash, get_gps,
+    xodim_qoshish, kompaniya_xodimlari, xodim_olish, xodim_tahrirlash,
+    telegram_id_orqali_xodim, telefon_orqali_xodim, xodim_telegram_saqlash,
+    hr_idlari, keldi_belgilash, keldi_rasm_saqlash, ketdi_belgilash,
+    ketdi_rasm_saqlash, xodim_davomati, kompaniya_davomati, manual_davomat,
+    sababli_sorov_saqlash, sababli_sorov_yangilash,
+    super_admin_hisobot, kompaniya_hisobot
 )
 
-def connect():
-    return psycopg2.connect(DATABASE_URL)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def hozir():
-    return datetime.now(TASHKENT)
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN")
+TASHKENT = pytz.timezone('Asia/Tashkent')
 
-def soat_format(soat_decimal):
-    soat = int(float(soat_decimal or 0))
-    daqiqa = int((float(soat_decimal or 0) - soat) * 60)
-    return f"{soat} soat {daqiqa} daqiqa"
+# ==================== STATES ====================
+(
+    # Kirish
+    TELEFON, KOD,
+    # Super Admin
+    SA_MENU, SA_KOMP_MENU, SA_KOMP_NOMI, SA_KOMP_ADMIN_TEL,
+    SA_KOMP_TANLASH, SA_KOMP_TAHRIR, SA_KOMP_TAHRIR_QIYMAT,
+    SA_FUNKSIYA_TANLASH, SA_SOZ_MENU,
+    # Admin
+    ADM_MENU, ADM_XODIM_MENU, ADM_XODIM_ISM, ADM_XODIM_TEL,
+    ADM_XODIM_LAVOZIM, ADM_XODIM_OYLIK, ADM_XODIM_ISH_BOSH,
+    ADM_XODIM_ISH_TUG, ADM_XODIM_ROL, ADM_XODIM_TANLASH,
+    ADM_XODIM_TAHRIR, ADM_XODIM_TAHRIR_QIYMAT,
+    ADM_GPS_LAT, ADM_GPS_LON, ADM_GPS_RADIUS,
+    # HR
+    HR_MENU, HR_MANUAL_XODIM, HR_MANUAL_SANA, HR_MANUAL_KELDI,
+    HR_MANUAL_KETDI, HR_MANUAL_HOLAT, HR_MANUAL_IZOH,
+    # Xodim
+    XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM,
+    XOD_KETDI_GPS, XOD_KETDI_RASM,
+    XOD_SABAB_SANA, XOD_SABAB_MATN,
+) = range(42)
 
-def kechikish_format(daqiqalar):
-    d = int(daqiqalar or 0)
-    soat = d // 60
-    daqiqa = d % 60
-    if soat > 0:
-        return f"{soat} soat {daqiqa} daqiqa"
-    return f"{daqiqa} daqiqa"
+# ==================== YORDAMCHI ====================
 
-def create_tables():
-    conn = connect()
-    cur = conn.cursor()
+def gps_tekshir(lat, lon, komp_lat, komp_lon, radius):
+    R = 6371000
+    lat1, lon1 = math.radians(lat), math.radians(lon)
+    lat2, lon2 = math.radians(komp_lat), math.radians(komp_lon)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
+    masofa = R * 2 * math.asin(math.sqrt(a))
+    return masofa <= radius, round(masofa)
 
-    # Super adminlar jadvali
-    cur.execute('''CREATE TABLE IF NOT EXISTS super_adminlar (
-        id SERIAL PRIMARY KEY,
-        telefon TEXT UNIQUE NOT NULL,
-        telegram_id BIGINT UNIQUE,
-        ism TEXT DEFAULT 'Super Admin',
-        kod TEXT DEFAULT '0001'
-    )''')
+def random_kod(uzunlik=6):
+    import random, string
+    return ''.join(random.choices(string.digits, k=uzunlik))
 
-    # Kompaniyalar jadvali
-    cur.execute('''CREATE TABLE IF NOT EXISTS kompaniyalar (
-        id SERIAL PRIMARY KEY,
-        nomi TEXT NOT NULL,
-        admin_telefon TEXT,
-        admin_id BIGINT,
-        gps_lat REAL DEFAULT 41.299496,
-        gps_lon REAL DEFAULT 69.240073,
-        gps_radius INTEGER DEFAULT 200,
-        holat TEXT DEFAULT 'faol',
-        yaratilgan TEXT,
-        gps_aktiv BOOLEAN DEFAULT TRUE,
-        selfie_aktiv BOOLEAN DEFAULT TRUE,
-        face_id_aktiv BOOLEAN DEFAULT FALSE,
-        hikvision_aktiv BOOLEAN DEFAULT FALSE
-    )''')
+# ==================== /start ====================
 
-    # Xodimlar jadvali
-    cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
-        id SERIAL PRIMARY KEY,
-        ism TEXT NOT NULL,
-        telefon TEXT,
-        kod TEXT,
-        lavozim TEXT,
-        oylik REAL DEFAULT 0,
-        ish_boshlanish TEXT DEFAULT '09:00',
-        ish_tugash TEXT DEFAULT '18:00',
-        ishga_kirgan TEXT,
-        telegram_id BIGINT UNIQUE,
-        kompaniya_id INTEGER REFERENCES kompaniyalar(id),
-        rol TEXT DEFAULT 'xodim',
-        holat TEXT DEFAULT 'faol'
-    )''')
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    context.user_data.clear()
 
-    # Davomat jadvali
-    cur.execute('''CREATE TABLE IF NOT EXISTS davomat (
-        id SERIAL PRIMARY KEY,
-        xodim_id INTEGER REFERENCES xodimlar(id),
-        kompaniya_id INTEGER REFERENCES kompaniyalar(id),
-        sana TEXT,
-        keldi TEXT,
-        ketdi TEXT,
-        ish_soat REAL DEFAULT 0,
-        kechikish INTEGER DEFAULT 0,
-        holat TEXT DEFAULT 'normal',
-        izoh TEXT,
-        keldi_rasm TEXT,
-        ketdi_rasm TEXT,
-        kiritdi TEXT DEFAULT 'xodim',
-        kiritdi_id BIGINT
-    )''')
+    # Super Admin tekshir
+    if super_admin_id_tekshir(user_id):
+        await update.message.reply_text(
+            "👑 Super Admin paneliga xush kelibsiz!",
+            reply_markup=super_admin_menu()
+        )
+        return SA_MENU
 
-    # Sababli so'rovlar jadvali
-    cur.execute('''CREATE TABLE IF NOT EXISTS sababli_sorovlar (
-        id SERIAL PRIMARY KEY,
-        xodim_id INTEGER REFERENCES xodimlar(id),
-        kompaniya_id INTEGER REFERENCES kompaniyalar(id),
-        sana TEXT,
-        sabab TEXT,
-        holat TEXT DEFAULT 'kutilmoqda'
-    )''')
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-# ==================== SUPER ADMIN ====================
-
-def super_admin_tekshir(telefon):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, ism, telegram_id FROM super_adminlar WHERE telefon LIKE %s", (f"%{telefon[-9:]}%",))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def super_admin_kod_tekshir(kod):
-    return kod == SUPER_ADMIN_KOD
-
-def super_admin_telegram_saqlash(telefon, telegram_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM super_adminlar WHERE telefon LIKE %s", (f"%{telefon[-9:]}%",))
-    row = cur.fetchone()
-    if row:
-        cur.execute("UPDATE super_adminlar SET telegram_id=%s WHERE telefon LIKE %s",
-                    (telegram_id, f"%{telefon[-9:]}%"))
-    else:
-        cur.execute("INSERT INTO super_adminlar (telefon, telegram_id) VALUES (%s, %s)",
-                    (f"%{telefon[-9:]}%", telegram_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def super_admin_id_tekshir(telegram_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM super_adminlar WHERE telegram_id=%s", (telegram_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row is not None
-
-def super_admin_kod_ozgartir(yangi_kod):
-    global SUPER_ADMIN_KOD
-    SUPER_ADMIN_KOD = yangi_kod
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("UPDATE super_adminlar SET kod=%s", (yangi_kod,))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-# ==================== KOMPANIYALAR ====================
-
-def kompaniya_yaratish(nomi, admin_telefon):
-    conn = connect()
-    cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''INSERT INTO kompaniyalar (nomi, admin_telefon, yaratilgan)
-                  VALUES (%s, %s, %s) RETURNING id''', (nomi, admin_telefon, sana))
-    komp_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return komp_id
-
-def barcha_kompaniyalar():
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT id, nomi, admin_telefon, holat, yaratilgan,
-                  gps_aktiv, selfie_aktiv, face_id_aktiv, hikvision_aktiv
-                  FROM kompaniyalar ORDER BY id''')
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
-
-def kompaniya_olish(komp_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT id, nomi, admin_telefon, admin_id, holat,
-                  gps_lat, gps_lon, gps_radius, yaratilgan,
-                  gps_aktiv, selfie_aktiv, face_id_aktiv, hikvision_aktiv
-                  FROM kompaniyalar WHERE id=%s''', (komp_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def kompaniya_holat_ozgartir(komp_id, holat):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("UPDATE kompaniyalar SET holat=%s WHERE id=%s", (holat, komp_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def kompaniya_funksiya_ozgartir(komp_id, funksiya, qiymat):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute(f"UPDATE kompaniyalar SET {funksiya}=%s WHERE id=%s", (qiymat, komp_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def kompaniya_tahrirlash(komp_id, maydon, qiymat):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute(f"UPDATE kompaniyalar SET {maydon}=%s WHERE id=%s", (qiymat, komp_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def admin_telefon_orqali_kompaniya(telefon):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, nomi, holat FROM kompaniyalar WHERE admin_telefon LIKE %s",
-                (f"%{telefon[-9:]}%",))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def admin_id_saqlash(komp_id, admin_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("UPDATE kompaniyalar SET admin_id=%s WHERE id=%s", (admin_id, komp_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-# ==================== GPS ====================
-
-def get_gps(komp_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT gps_lat, gps_lon, gps_radius FROM kompaniyalar WHERE id=%s", (komp_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if row:
-        return row[0], row[1], row[2]
-    return 41.299496, 69.240073, 200
-
-# ==================== XODIMLAR ====================
-
-def xodim_qoshish(ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol, kod):
-    conn = connect()
-    cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''INSERT INTO xodimlar
-        (ism, telefon, lavozim, oylik, ish_boshlanish, ish_tugash,
-         kompaniya_id, rol, kod, ishga_kirgan)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
-        (ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol, kod, sana))
-    xodim_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return xodim_id
-
-def kompaniya_xodimlari(komp_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT id, ism, lavozim, telefon, oylik,
-                  ish_boshlanish, ish_tugash, rol, kod, holat
-                  FROM xodimlar WHERE kompaniya_id=%s ORDER BY id''', (komp_id,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
-
-def xodim_olish(xodim_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT id, ism, telefon, lavozim, oylik,
-                  ish_boshlanish, ish_tugash, rol, kod, kompaniya_id, holat
-                  FROM xodimlar WHERE id=%s''', (xodim_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def xodim_tahrirlash(xodim_id, maydon, qiymat):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute(f"UPDATE xodimlar SET {maydon}=%s WHERE id=%s", (qiymat, xodim_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def telegram_id_orqali_xodim(telegram_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT id, ism, rol, kompaniya_id FROM xodimlar
-                  WHERE telegram_id=%s''', (telegram_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def telefon_orqali_xodim(telefon):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT id, ism, rol, kompaniya_id FROM xodimlar
-                  WHERE telefon LIKE %s''', (f"%{telefon[-9:]}%",))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def xodim_telegram_saqlash(xodim_id, telegram_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("UPDATE xodimlar SET telegram_id=%s WHERE id=%s", (telegram_id, xodim_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def hr_idlari(komp_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''SELECT telegram_id FROM xodimlar
-                  WHERE kompaniya_id=%s AND rol='hr' AND telegram_id IS NOT NULL''', (komp_id,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return [r[0] for r in rows]
-
-# ==================== DAVOMAT ====================
-
-def keldi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
-    conn = connect()
-    cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    vaqt = hozir().strftime("%H:%M")
-    cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
-    if cur.fetchone():
-        cur.close()
-        conn.close()
-        return "⚠️ Bugun allaqachon belgilangan!"
-    cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=%s", (xodim_id,))
-    xodim = cur.fetchone()
-    kechikish = 0
+    # Xodim/Admin tekshir
+    xodim = telegram_id_orqali_xodim(user_id)
     if xodim:
+        xodim_id, ism, rol, komp_id = xodim
+        context.user_data['xodim_id'] = xodim_id
+        context.user_data['ism'] = ism
+        context.user_data['rol'] = rol
+        context.user_data['komp_id'] = komp_id
+
+        if rol == 'admin':
+            await update.message.reply_text(
+                f"🏢 Admin paneliga xush kelibsiz, {ism}!",
+                reply_markup=admin_menu()
+            )
+            return ADM_MENU
+        elif rol == 'hr':
+            await update.message.reply_text(
+                f"👔 HR paneliga xush kelibsiz, {ism}!",
+                reply_markup=hr_menu()
+            )
+            return HR_MENU
+        else:
+            await update.message.reply_text(
+                f"👋 Xush kelibsiz, {ism}!",
+                reply_markup=xodim_menu()
+            )
+            return XOD_MENU
+
+    # Yangi foydalanuvchi
+    btn = [[KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)]]
+    await update.message.reply_text(
+        "👋 Xush kelibsiz!\n\nIltimos, telefon raqamingizni yuboring:",
+        reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True)
+    )
+    return TELEFON
+
+async def telefon_qabul(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    contact = update.message.contact
+    if not contact:
+        await update.message.reply_text("❌ Iltimos, tugma orqali telefon yuboring!")
+        return TELEFON
+
+    telefon = contact.phone_number
+    user_id = update.effective_user.id
+    context.user_data['telefon'] = telefon
+
+    # Super admin tekshir
+    sa = super_admin_tekshir(telefon)
+    if sa:
+        await update.message.reply_text(
+            "🔐 Super Admin kodni kiriting:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        context.user_data['tip'] = 'super_admin'
+        return KOD
+
+    # Admin tekshir
+    komp = admin_telefon_orqali_kompaniya(telefon)
+    if komp:
+        komp_id, komp_nomi, holat = komp
+        if holat != 'faol':
+            await update.message.reply_text("❌ Kompaniya faol emas!")
+            return ConversationHandler.END
+        await update.message.reply_text(
+            f"🏢 {komp_nomi} kompaniyasi admini sifatida kirdingiz.\n\n🔐 Kodni kiriting:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        context.user_data['tip'] = 'admin'
+        context.user_data['komp_id'] = komp_id
+        context.user_data['komp_nomi'] = komp_nomi
+        return KOD
+
+    # Xodim tekshir
+    xodim = telefon_orqali_xodim(telefon)
+    if xodim:
+        xodim_id, ism, rol, komp_id = xodim
+        await update.message.reply_text(
+            f"👋 {ism}, kodni kiriting:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        context.user_data['tip'] = rol
+        context.user_data['xodim_id'] = xodim_id
+        context.user_data['ism'] = ism
+        context.user_data['rol'] = rol
+        context.user_data['komp_id'] = komp_id
+        return KOD
+
+    await update.message.reply_text(
+        "❌ Siz tizimda ro'yxatdan o'tmagan ekansiz.\n"
+        "Kompaniya adminiga murojaat qiling.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+async def kod_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kod = update.message.text.strip()
+    tip = context.user_data.get('tip')
+    user_id = update.effective_user.id
+    telefon = context.user_data.get('telefon', '')
+
+    if tip == 'super_admin':
+        if not super_admin_kod_tekshir(kod):
+            await update.message.reply_text("❌ Noto'g'ri kod!")
+            return KOD
+        super_admin_telegram_saqlash(telefon, user_id)
+        await update.message.reply_text(
+            "✅ Xush kelibsiz, Super Admin!",
+            reply_markup=super_admin_menu()
+        )
+        return SA_MENU
+
+    elif tip in ('admin', 'hr', 'xodim'):
+        xodim_id = context.user_data.get('xodim_id')
+        if tip == 'admin':
+            # Admin uchun kod kompaniya id bilan bog'liq emas, xodimlar jadvalidan
+            xodim = xodim_olish(xodim_id)
+            if not xodim or xodim[8] != kod:
+                await update.message.reply_text("❌ Noto'g'ri kod!")
+                return KOD
+            komp_id = context.user_data['komp_id']
+            admin_id_saqlash(komp_id, user_id)
+            xodim_telegram_saqlash(xodim_id, user_id)
+            await update.message.reply_text(
+                f"✅ Admin sifatida kirdingiz!",
+                reply_markup=admin_menu()
+            )
+            return ADM_MENU
+        else:
+            xodim = xodim_olish(xodim_id)
+            if not xodim or xodim[8] != kod:
+                await update.message.reply_text("❌ Noto'g'ri kod!")
+                return KOD
+            xodim_telegram_saqlash(xodim_id, user_id)
+            if tip == 'hr':
+                await update.message.reply_text(
+                    f"✅ HR sifatida kirdingiz!",
+                    reply_markup=hr_menu()
+                )
+                return HR_MENU
+            else:
+                await update.message.reply_text(
+                    f"✅ Xush kelibsiz, {context.user_data['ism']}!",
+                    reply_markup=xodim_menu()
+                )
+                return XOD_MENU
+
+    await update.message.reply_text("❌ Xatolik!")
+    return ConversationHandler.END
+
+# ==================== MENULAR ====================
+
+def super_admin_menu():
+    return ReplyKeyboardMarkup([
+        ["🏢 Kompaniyalar", "⚙️ Funksiyalar"],
+        ["👥 Foydalanuvchilar", "📊 Hisobot"],
+        ["🔐 Sozlamalar"]
+    ], resize_keyboard=True)
+
+def admin_menu():
+    return ReplyKeyboardMarkup([
+        ["👥 Xodimlar", "📅 Davomat"],
+        ["📊 Hisobot", "📍 GPS sozlash"],
+        ["🏠 Bosh menu"]
+    ], resize_keyboard=True)
+
+def hr_menu():
+    return ReplyKeyboardMarkup([
+        ["✍️ Manual davomat", "📋 So'rovlar"],
+        ["📊 Hisobot", "🏠 Bosh menu"]
+    ], resize_keyboard=True)
+
+def xodim_menu():
+    return ReplyKeyboardMarkup([
+        ["✅ Keldim", "🚪 Ketdim"],
+        ["📋 Davomat", "📝 Sababli so'rov"],
+        ["🏠 Bosh menu"]
+    ], resize_keyboard=True)
+
+# ==================== SUPER ADMIN PANEL ====================
+
+async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+
+    if matn == "🏢 Kompaniyalar":
+        kompaniyalar = barcha_kompaniyalar()
+        if not kompaniyalar:
+            xabar = "📋 Hozircha kompaniya yo'q."
+        else:
+            xabar = "🏢 *Kompaniyalar ro'yxati:*\n\n"
+            for k in kompaniyalar:
+                holat_emoji = "✅" if k[3] == 'faol' else "❌"
+                xabar += f"{holat_emoji} *{k[1]}*\n"
+                xabar += f"   📞 {k[2] or '—'} | 📅 {k[4] or '—'}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["➕ Yangi kompaniya", "✏️ Tahrirlash"],
+                ["🔛 Faollashtirish", "🔴 To'xtatish"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True)
+        )
+        return SA_KOMP_MENU
+
+    elif matn == "📊 Hisobot":
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        fayl = super_admin_hisobot()
+        with open(fayl, 'rb') as f:
+            await update.message.reply_document(f, filename=fayl)
+        return SA_MENU
+
+    elif matn == "🔐 Sozlamalar":
+        await update.message.reply_text(
+            "🔐 Sozlamalar:",
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔑 Kodni o'zgartirish"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True)
+        )
+        return SA_SOZ_MENU
+
+    elif matn == "🏠 Bosh menu" or matn == "🔙 Orqaga":
+        await update.message.reply_text("👑 Super Admin menu:", reply_markup=super_admin_menu())
+        return SA_MENU
+
+    return SA_MENU
+
+async def sa_komp_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+
+    if matn == "➕ Yangi kompaniya":
+        await update.message.reply_text(
+            "🏢 Yangi kompaniya nomini kiriting:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return SA_KOMP_NOMI
+
+    elif matn == "✏️ Tahrirlash":
+        kompaniyalar = barcha_kompaniyalar()
+        if not kompaniyalar:
+            await update.message.reply_text("❌ Kompaniya yo'q!")
+            return SA_KOMP_MENU
+        tugmalar = [[f"🏢 {k[1]} (ID:{k[0]})"] for k in kompaniyalar]
+        tugmalar.append(["🔙 Orqaga"])
+        await update.message.reply_text(
+            "Tahrirlash uchun kompaniya tanlang:",
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True)
+        )
+        context.user_data['amal'] = 'tahrir'
+        return SA_KOMP_TANLASH
+
+    elif matn in ("🔛 Faollashtirish", "🔴 To'xtatish"):
+        kompaniyalar = barcha_kompaniyalar()
+        if not kompaniyalar:
+            await update.message.reply_text("❌ Kompaniya yo'q!")
+            return SA_KOMP_MENU
+        tugmalar = [[f"🏢 {k[1]} (ID:{k[0]})"] for k in kompaniyalar]
+        tugmalar.append(["🔙 Orqaga"])
+        context.user_data['amal'] = 'faollashtir' if matn == "🔛 Faollashtirish" else 'toxtat'
+        await update.message.reply_text(
+            "Kompaniya tanlang:",
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True)
+        )
+        return SA_KOMP_TANLASH
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("👑 Super Admin menu:", reply_markup=super_admin_menu())
+        return SA_MENU
+
+    return SA_KOMP_MENU
+
+async def sa_komp_nomi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['yangi_komp_nomi'] = update.message.text.strip()
+    await update.message.reply_text("📞 Admin telefon raqamini kiriting (+998XXXXXXXXX):")
+    return SA_KOMP_ADMIN_TEL
+
+async def sa_komp_admin_tel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telefon = update.message.text.strip()
+    nomi = context.user_data['yangi_komp_nomi']
+    komp_id = kompaniya_yaratish(nomi, telefon)
+    await update.message.reply_text(
+        f"✅ Kompaniya yaratildi!\n\n"
+        f"🏢 *{nomi}*\n"
+        f"📞 Admin: {telefon}\n"
+        f"🆔 ID: {komp_id}",
+        parse_mode='Markdown',
+        reply_markup=ReplyKeyboardMarkup([
+            ["➕ Yangi kompaniya", "✏️ Tahrirlash"],
+            ["🔛 Faollashtirish", "🔴 To'xtatish"],
+            ["🔙 Orqaga"]
+        ], resize_keyboard=True)
+    )
+    return SA_KOMP_MENU
+
+async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text(
+            "🏢 Kompaniyalar:",
+            reply_markup=ReplyKeyboardMarkup([
+                ["➕ Yangi kompaniya", "✏️ Tahrirlash"],
+                ["🔛 Faollashtirish", "🔴 To'xtatish"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True)
+        )
+        return SA_KOMP_MENU
+
+    try:
+        komp_id = int(matn.split("ID:")[1].replace(")", "").strip())
+    except:
+        await update.message.reply_text("❌ Xatolik!")
+        return SA_KOMP_TANLASH
+
+    amal = context.user_data.get('amal')
+    context.user_data['tanlangan_komp_id'] = komp_id
+
+    if amal == 'faollashtir':
+        kompaniya_holat_ozgartir(komp_id, 'faol')
+        await update.message.reply_text(
+            "✅ Kompaniya faollashtirildi!",
+            reply_markup=super_admin_menu()
+        )
+        return SA_MENU
+
+    elif amal == 'toxtat':
+        kompaniya_holat_ozgartir(komp_id, 'nofaol')
+        await update.message.reply_text(
+            "✅ Kompaniya to'xtatildi!",
+            reply_markup=super_admin_menu()
+        )
+        return SA_MENU
+
+    elif amal == 'tahrir':
+        await update.message.reply_text(
+            "Nimani tahrirlash?",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📝 Nomi", "📞 Admin telefon"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True)
+        )
+        return SA_KOMP_TAHRIR
+
+    return SA_KOMP_MENU
+
+async def sa_komp_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("👑 Menu:", reply_markup=super_admin_menu())
+        return SA_MENU
+
+    if matn == "📝 Nomi":
+        context.user_data['tahrir_maydon'] = 'nomi'
+        await update.message.reply_text("Yangi nomni kiriting:", reply_markup=ReplyKeyboardRemove())
+    elif matn == "📞 Admin telefon":
+        context.user_data['tahrir_maydon'] = 'admin_telefon'
+        await update.message.reply_text("Yangi telefonni kiriting:", reply_markup=ReplyKeyboardRemove())
+    return SA_KOMP_TAHRIR_QIYMAT
+
+async def sa_komp_tahrir_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    qiymat = update.message.text.strip()
+    komp_id = context.user_data['tanlangan_komp_id']
+    maydon = context.user_data['tahrir_maydon']
+    kompaniya_tahrirlash(komp_id, maydon, qiymat)
+    await update.message.reply_text("✅ Saqlandi!", reply_markup=super_admin_menu())
+    return SA_MENU
+
+async def sa_soz_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔑 Kodni o'zgartirish":
+        await update.message.reply_text("Yangi kodni kiriting:", reply_markup=ReplyKeyboardRemove())
+        context.user_data['soz_amal'] = 'kod'
+        return SA_SOZ_MENU
+    elif context.user_data.get('soz_amal') == 'kod':
+        yangi_kod = matn.strip()
+        super_admin_kod_ozgartir(yangi_kod)
+        await update.message.reply_text(f"✅ Kod o'zgartirildi: {yangi_kod}", reply_markup=super_admin_menu())
+        context.user_data.pop('soz_amal', None)
+        return SA_MENU
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("👑 Menu:", reply_markup=super_admin_menu())
+        return SA_MENU
+    return SA_SOZ_MENU
+
+# ==================== ADMIN PANEL ====================
+
+async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "👥 Xodimlar":
+        await update.message.reply_text(
+            "👥 Xodimlar bo'limi:",
+            reply_markup=ReplyKeyboardMarkup([
+                ["➕ Xodim qo'shish", "📋 Xodimlar ro'yxati"],
+                ["✏️ Tahrirlash", "🔙 Orqaga"]
+            ], resize_keyboard=True)
+        )
+        return ADM_XODIM_MENU
+
+    elif matn == "📅 Davomat":
+        davomatlar = kompaniya_davomati(komp_id)
+        if not davomatlar:
+            xabar = "📅 Davomat ma'lumoti yo'q."
+        else:
+            xabar = "📅 *Oxirgi davomat:*\n\n"
+            for d in davomatlar[-20:]:
+                xabar += f"👤 {d[0]} | 📅 {d[1]}\n"
+                xabar += f"   ⬅️ {d[2] or '—'} ➡️ {d[3] or '—'}\n\n"
+        await update.message.reply_text(xabar, parse_mode='Markdown')
+        return ADM_MENU
+
+    elif matn == "📊 Hisobot":
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        fayl = kompaniya_hisobot(komp_id)
+        with open(fayl, 'rb') as f:
+            await update.message.reply_document(f, filename=fayl)
+        return ADM_MENU
+
+    elif matn == "📍 GPS sozlash":
+        lat, lon, radius = get_gps(komp_id)
+        await update.message.reply_text(
+            f"📍 *Joriy GPS sozlamalari:*\n\n"
+            f"📌 Lat: {lat}\n"
+            f"📌 Lon: {lon}\n"
+            f"📏 Radius: {radius} metr\n\n"
+            f"Yangi latitude kiriting:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ADM_GPS_LAT
+
+    elif matn == "🏠 Bosh menu":
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=admin_menu())
+        return ADM_MENU
+
+    return ADM_MENU
+
+async def adm_xodim_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "➕ Xodim qo'shish":
+        await update.message.reply_text(
+            "👤 Xodim ismini kiriting:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ADM_XODIM_ISM
+
+    elif matn == "📋 Xodimlar ro'yxati":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            xabar = "👥 Xodimlar yo'q."
+        else:
+            xabar = "👥 *Xodimlar:*\n\n"
+            for x in xodimlar:
+                holat_emoji = "✅" if x[9] == 'faol' else "❌"
+                xabar += f"{holat_emoji} *{x[1]}* — {x[2]}\n"
+                xabar += f"   📞 {x[3]} | 💰 {x[4]:,.0f} so'm | 🎭 {x[7]}\n\n"
+        await update.message.reply_text(xabar, parse_mode='Markdown')
+        return ADM_XODIM_MENU
+
+    elif matn == "✏️ Tahrirlash":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!")
+            return ADM_XODIM_MENU
+        tugmalar = [[f"👤 {x[1]} (ID:{x[0]})"] for x in xodimlar]
+        tugmalar.append(["🔙 Orqaga"])
+        await update.message.reply_text(
+            "Tahrirlash uchun xodim tanlang:",
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True)
+        )
+        context.user_data['xodim_amal'] = 'tahrir'
+        return ADM_XODIM_TANLASH
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=admin_menu())
+        return ADM_MENU
+
+    return ADM_XODIM_MENU
+
+# Xodim qo'shish bosqichlari
+async def adm_xodim_ism(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['y_ism'] = update.message.text.strip()
+    btn = [[KeyboardButton("📱 Telefon yuborish", request_contact=True)]]
+    await update.message.reply_text(
+        "📞 Xodim telefon raqamini yuboring yoki yozing:",
+        reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True)
+    )
+    return ADM_XODIM_TEL
+
+async def adm_xodim_tel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.contact:
+        telefon = update.message.contact.phone_number
+    else:
+        telefon = update.message.text.strip()
+    context.user_data['y_tel'] = telefon
+    await update.message.reply_text("💼 Lavozimni kiriting:", reply_markup=ReplyKeyboardRemove())
+    return ADM_XODIM_LAVOZIM
+
+async def adm_xodim_lavozim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['y_lavozim'] = update.message.text.strip()
+    await update.message.reply_text("💰 Oylik maoshni kiriting (so'mda):")
+    return ADM_XODIM_OYLIK
+
+async def adm_xodim_oylik(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        context.user_data['y_oylik'] = float(update.message.text.strip().replace(',', '').replace(' ', ''))
+    except:
+        context.user_data['y_oylik'] = 0
+    await update.message.reply_text("⏰ Ish boshlanish vaqti (09:00 formatda):")
+    return ADM_XODIM_ISH_BOSH
+
+async def adm_xodim_ish_bosh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['y_ish_bosh'] = update.message.text.strip()
+    await update.message.reply_text("⏰ Ish tugash vaqti (18:00 formatda):")
+    return ADM_XODIM_ISH_TUG
+
+async def adm_xodim_ish_tug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['y_ish_tug'] = update.message.text.strip()
+    await update.message.reply_text(
+        "🎭 Rolni tanlang:",
+        reply_markup=ReplyKeyboardMarkup([
+            ["xodim", "hr"],
+            ["admin"]
+        ], resize_keyboard=True, one_time_keyboard=True)
+    )
+    return ADM_XODIM_ROL
+
+async def adm_xodim_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    rol = update.message.text.strip().lower()
+    if rol not in ('xodim', 'hr', 'admin'):
+        await update.message.reply_text("❌ xodim, hr yoki admin tanlang!")
+        return ADM_XODIM_ROL
+
+    komp_id = context.user_data['komp_id']
+    kod = random_kod()
+
+    xodim_id = xodim_qoshish(
+        context.user_data['y_ism'],
+        context.user_data['y_tel'],
+        context.user_data['y_lavozim'],
+        context.user_data['y_oylik'],
+        context.user_data['y_ish_bosh'],
+        context.user_data['y_ish_tug'],
+        komp_id, rol, kod
+    )
+
+    await update.message.reply_text(
+        f"✅ *Xodim qo'shildi!*\n\n"
+        f"👤 {context.user_data['y_ism']}\n"
+        f"💼 {context.user_data['y_lavozim']}\n"
+        f"🎭 {rol}\n"
+        f"🔑 Kirish kodi: `{kod}`\n\n"
+        f"Xodimga bu kodni bering!",
+        parse_mode='Markdown',
+        reply_markup=admin_menu()
+    )
+    return ADM_MENU
+
+async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=admin_menu())
+        return ADM_MENU
+    try:
+        xodim_id = int(matn.split("ID:")[1].replace(")", "").strip())
+        context.user_data['tahrir_xodim_id'] = xodim_id
+    except:
+        await update.message.reply_text("❌ Xatolik!")
+        return ADM_XODIM_TANLASH
+
+    await update.message.reply_text(
+        "Nimani tahrirlash?",
+        reply_markup=ReplyKeyboardMarkup([
+            ["📝 Ism", "💼 Lavozim"],
+            ["💰 Oylik", "⏰ Ish vaqti"],
+            ["🎭 Rol", "🔑 Kod"],
+            ["🔙 Orqaga"]
+        ], resize_keyboard=True)
+    )
+    return ADM_XODIM_TAHRIR
+
+async def adm_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=admin_menu())
+        return ADM_MENU
+
+    maydon_map = {
+        "📝 Ism": "ism",
+        "💼 Lavozim": "lavozim",
+        "💰 Oylik": "oylik",
+        "🎭 Rol": "rol",
+        "🔑 Kod": "kod"
+    }
+    if matn in maydon_map:
+        context.user_data['tahrir_maydon'] = maydon_map[matn]
+        await update.message.reply_text(f"Yangi {matn} kiriting:", reply_markup=ReplyKeyboardRemove())
+        return ADM_XODIM_TAHRIR_QIYMAT
+    elif matn == "⏰ Ish vaqti":
+        await update.message.reply_text("Ish boshlanish vaqti (09:00):", reply_markup=ReplyKeyboardRemove())
+        context.user_data['tahrir_maydon'] = 'ish_boshlanish'
+        return ADM_XODIM_TAHRIR_QIYMAT
+    return ADM_XODIM_TAHRIR
+
+async def adm_xodim_tahrir_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    qiymat = update.message.text.strip()
+    xodim_id = context.user_data['tahrir_xodim_id']
+    maydon = context.user_data['tahrir_maydon']
+    xodim_tahrirlash(xodim_id, maydon, qiymat)
+    await update.message.reply_text("✅ Saqlandi!", reply_markup=admin_menu())
+    return ADM_MENU
+
+# GPS sozlash
+async def adm_gps_lat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        context.user_data['gps_lat'] = float(update.message.text.strip())
+        await update.message.reply_text("Longitude kiriting:")
+        return ADM_GPS_LON
+    except:
+        await update.message.reply_text("❌ To'g'ri son kiriting (masalan: 41.299496):")
+        return ADM_GPS_LAT
+
+async def adm_gps_lon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        context.user_data['gps_lon'] = float(update.message.text.strip())
+        await update.message.reply_text("Radius kiriting (metrda, masalan: 200):")
+        return ADM_GPS_RADIUS
+    except:
+        await update.message.reply_text("❌ To'g'ri son kiriting:")
+        return ADM_GPS_LON
+
+async def adm_gps_radius(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        radius = int(update.message.text.strip())
+        komp_id = context.user_data['komp_id']
+        kompaniya_tahrirlash(komp_id, 'gps_lat', context.user_data['gps_lat'])
+        kompaniya_tahrirlash(komp_id, 'gps_lon', context.user_data['gps_lon'])
+        kompaniya_tahrirlash(komp_id, 'gps_radius', radius)
+        await update.message.reply_text(
+            f"✅ GPS sozlandi!\n📌 {context.user_data['gps_lat']}, {context.user_data['gps_lon']}\n📏 {radius}m",
+            reply_markup=admin_menu()
+        )
+        return ADM_MENU
+    except:
+        await update.message.reply_text("❌ To'g'ri son kiriting:")
+        return ADM_GPS_RADIUS
+
+# ==================== HR PANEL ====================
+
+async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "✍️ Manual davomat":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!")
+            return HR_MENU
+        tugmalar = [[f"👤 {x[1]} (ID:{x[0]})"] for x in xodimlar]
+        tugmalar.append(["🔙 Orqaga"])
+        await update.message.reply_text(
+            "Xodim tanlang:",
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True)
+        )
+        return HR_MANUAL_XODIM
+
+    elif matn == "📊 Hisobot":
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        fayl = kompaniya_hisobot(komp_id)
+        with open(fayl, 'rb') as f:
+            await update.message.reply_document(f, filename=fayl)
+        return HR_MENU
+
+    elif matn == "🏠 Bosh menu":
+        await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu())
+        return HR_MENU
+
+    return HR_MENU
+
+async def hr_manual_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu())
+        return HR_MENU
+    try:
+        xodim_id = int(matn.split("ID:")[1].replace(")", "").strip())
+        context.user_data['manual_xodim_id'] = xodim_id
+    except:
+        await update.message.reply_text("❌ Xatolik!")
+        return HR_MANUAL_XODIM
+    await update.message.reply_text(
+        "📅 Sana kiriting (YYYY-MM-DD, masalan: 2026-05-23):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return HR_MANUAL_SANA
+
+async def hr_manual_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['manual_sana'] = update.message.text.strip()
+    await update.message.reply_text("⏰ Keldi vaqti (HH:MM, masalan: 09:00):")
+    return HR_MANUAL_KELDI
+
+async def hr_manual_keldi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['manual_keldi'] = update.message.text.strip()
+    await update.message.reply_text("⏰ Ketdi vaqti (HH:MM, masalan: 18:00):")
+    return HR_MANUAL_KETDI
+
+async def hr_manual_ketdi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['manual_ketdi'] = update.message.text.strip()
+    await update.message.reply_text(
+        "📋 Holat tanlang:",
+        reply_markup=ReplyKeyboardMarkup([
+            ["normal", "sababli"],
+            ["kasal", "ta'til"]
+        ], resize_keyboard=True, one_time_keyboard=True)
+    )
+    return HR_MANUAL_HOLAT
+
+async def hr_manual_holat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['manual_holat'] = update.message.text.strip()
+    await update.message.reply_text("📝 Izoh kiriting (yoki - yozing):", reply_markup=ReplyKeyboardRemove())
+    return HR_MANUAL_IZOH
+
+async def hr_manual_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    izoh = update.message.text.strip()
+    if izoh == '-':
+        izoh = ''
+    xodim_id = context.user_data['manual_xodim_id']
+    komp_id = context.user_data['komp_id']
+    xodim = xodim_olish(xodim_id)
+    natija = manual_davomat(
+        xodim_id, komp_id,
+        context.user_data['manual_sana'],
+        context.user_data['manual_keldi'],
+        context.user_data['manual_ketdi'],
+        context.user_data['manual_holat'],
+        izoh,
+        xodim[1] if xodim else 'HR',
+        update.effective_user.id
+    )
+    await update.message.reply_text(natija, reply_markup=hr_menu())
+    return HR_MENU
+
+# ==================== XODIM PANEL ====================
+
+async def xod_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "✅ Keldim":
+        # GPS tekshirish
+        komp = kompaniya_olish(komp_id)
+        gps_aktiv = komp[9] if komp else True
+        if gps_aktiv:
+            btn = [[KeyboardButton("📍 GPS yuborish", request_location=True)]]
+            await update.message.reply_text(
+                "📍 Joylashuvingizni yuboring:",
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True)
+            )
+            return XOD_KELDI_GPS
+        else:
+            natija = keldi_belgilash(xodim_id, komp_id)
+            await update.message.reply_text(natija, reply_markup=xodim_menu())
+            return XOD_MENU
+
+    elif matn == "🚪 Ketdim":
+        komp = kompaniya_olish(komp_id)
+        gps_aktiv = komp[9] if komp else True
+        if gps_aktiv:
+            btn = [[KeyboardButton("📍 GPS yuborish", request_location=True)]]
+            await update.message.reply_text(
+                "📍 Joylashuvingizni yuboring:",
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True)
+            )
+            return XOD_KETDI_GPS
+        else:
+            natija = ketdi_belgilash(xodim_id, komp_id)
+            await update.message.reply_text(natija, reply_markup=xodim_menu())
+            return XOD_MENU
+
+    elif matn == "📋 Davomat":
+        davomatlar = xodim_davomati(xodim_id)
+        if not davomatlar:
+            await update.message.reply_text("📋 Davomat yo'q.")
+        else:
+            xabar = "📋 *Mening davomatim:*\n\n"
+            for d in davomatlar[-15:]:
+                holat_emoji = {"normal": "✅", "sababli": "📝", "kasal": "🤒", "ta'til": "🏖"}.get(d[5], "❓")
+                xabar += f"{holat_emoji} {d[0]}: {d[1] or '—'} → {d[2] or '—'}\n"
+                if d[4] and d[4] > 0:
+                    xabar += f"   ⚠️ Kechikish: {d[4]} daqiqa\n"
+            await update.message.reply_text(xabar, parse_mode='Markdown')
+        return XOD_MENU
+
+    elif matn == "📝 Sababli so'rov":
+        await update.message.reply_text(
+            "📅 Qaysi kun uchun? (YYYY-MM-DD):",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return XOD_SABAB_SANA
+
+    elif matn == "🏠 Bosh menu":
+        await update.message.reply_text("👋 Menu:", reply_markup=xodim_menu())
+        return XOD_MENU
+
+    return XOD_MENU
+
+async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.location:
+        await update.message.reply_text("❌ GPS yuboring!")
+        return XOD_KELDI_GPS
+
+    xodim_id = context.user_data['xodim_id']
+    komp_id = context.user_data['komp_id']
+    lat = update.message.location.latitude
+    lon = update.message.location.longitude
+
+    komp_lat, komp_lon, radius = get_gps(komp_id)
+    ichida, masofa = gps_tekshir(lat, lon, komp_lat, komp_lon, radius)
+
+    if not ichida:
+        await update.message.reply_text(
+            f"❌ Siz ish joyidan tashqarisiz!\n📏 Masofa: {masofa} metr (ruxsat: {radius} metr)",
+            reply_markup=xodim_menu()
+        )
+        return XOD_MENU
+
+    # Selfie tekshir
+    komp = kompaniya_olish(komp_id)
+    selfie_aktiv = komp[10] if komp else True
+    if selfie_aktiv:
+        natija = keldi_belgilash(xodim_id, komp_id)
+        await update.message.reply_text(
+            f"{natija}\n\n📸 Selfie yuboring:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return XOD_KELDI_RASM
+    else:
+        natija = keldi_belgilash(xodim_id, komp_id)
+        await update.message.reply_text(natija, reply_markup=xodim_menu())
+        return XOD_MENU
+
+async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo and not update.message.video_note:
+        await update.message.reply_text("❌ Selfie yoki video yuboring!")
+        return XOD_KELDI_RASM
+
+    xodim_id = context.user_data['xodim_id']
+    if update.message.photo:
+        rasm_id = update.message.photo[-1].file_id
+    else:
+        rasm_id = update.message.video_note.file_id
+
+    keldi_rasm_saqlash(xodim_id, rasm_id)
+    await update.message.reply_text("✅ Davomat qabul qilindi!", reply_markup=xodim_menu())
+    return XOD_MENU
+
+async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.location:
+        await update.message.reply_text("❌ GPS yuboring!")
+        return XOD_KETDI_GPS
+
+    xodim_id = context.user_data['xodim_id']
+    komp_id = context.user_data['komp_id']
+    lat = update.message.location.latitude
+    lon = update.message.location.longitude
+
+    komp_lat, komp_lon, radius = get_gps(komp_id)
+    ichida, masofa = gps_tekshir(lat, lon, komp_lat, komp_lon, radius)
+
+    if not ichida:
+        await update.message.reply_text(
+            f"❌ Siz ish joyidan tashqarisiz!\n📏 Masofa: {masofa} metr",
+            reply_markup=xodim_menu()
+        )
+        return XOD_MENU
+
+    komp = kompaniya_olish(komp_id)
+    selfie_aktiv = komp[10] if komp else True
+    if selfie_aktiv:
+        natija = ketdi_belgilash(xodim_id, komp_id)
+        await update.message.reply_text(
+            f"{natija}\n\n📸 Selfie yuboring:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return XOD_KETDI_RASM
+    else:
+        natija = ketdi_belgilash(xodim_id, komp_id)
+        await update.message.reply_text(natija, reply_markup=xodim_menu())
+        return XOD_MENU
+
+async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo and not update.message.video_note:
+        await update.message.reply_text("❌ Selfie yoki video yuboring!")
+        return XOD_KETDI_RASM
+
+    xodim_id = context.user_data['xodim_id']
+    if update.message.photo:
+        rasm_id = update.message.photo[-1].file_id
+    else:
+        rasm_id = update.message.video_note.file_id
+
+    ketdi_rasm_saqlash(xodim_id, rasm_id)
+    await update.message.reply_text("✅ Siz chiqishni belgiladingiz!", reply_markup=xodim_menu())
+    return XOD_MENU
+
+async def xod_sabab_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['sabab_sana'] = update.message.text.strip()
+    await update.message.reply_text("📝 Sabab matnini kiriting:")
+    return XOD_SABAB_MATN
+
+async def xod_sabab_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sabab = update.message.text.strip()
+    xodim_id = context.user_data['xodim_id']
+    komp_id = context.user_data['komp_id']
+    sana = context.user_data['sabab_sana']
+
+    sorov_id = sababli_sorov_saqlash(xodim_id, komp_id, sana, sabab)
+
+    # HR larga xabar yuborish
+    from telegram import Bot
+    bot = context.bot
+    hr_list = hr_idlari(komp_id)
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Xodim"
+
+    for hr_id in hr_list:
         try:
-            belgi = datetime.strptime(xodim[0], "%H:%M")
-            keldi_v = datetime.strptime(vaqt, "%H:%M")
-            if keldi_v > belgi:
-                kechikish = int((keldi_v - belgi).total_seconds() / 60)
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"sorov_tasdiqlash_{sorov_id}_{xodim_id}_{sana}"),
+                    InlineKeyboardButton("❌ Rad etish", callback_data=f"sorov_rad_{sorov_id}_{xodim_id}_{sana}")
+                ]
+            ])
+            await bot.send_message(
+                hr_id,
+                f"📝 *Sababli so'rov*\n\n"
+                f"👤 {xodim_ism}\n"
+                f"📅 {sana}\n"
+                f"📋 {sabab}",
+                parse_mode='Markdown',
+                reply_markup=keyboard
+            )
         except:
             pass
-    cur.execute('''INSERT INTO davomat
-        (xodim_id, kompaniya_id, sana, keldi, kechikish, kiritdi, kiritdi_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)''',
-        (xodim_id, komp_id, sana, vaqt, kechikish, kiritdi, kiritdi_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-    if kechikish > 0:
-        return f"✅ Keldi vaqti: {vaqt}\n⚠️ Kechikish: {kechikish_format(kechikish)}"
-    return f"✅ Keldi vaqti: {vaqt}"
 
-def keldi_rasm_saqlash(xodim_id, rasm_id):
+    await update.message.reply_text(
+        "✅ So'rovingiz HR ga yuborildi!",
+        reply_markup=xodim_menu()
+    )
+    return XOD_MENU
+
+async def sorov_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data.split('_')
+    # format: sorov_tasdiqlash_ID_XODIM_ID_SANA
+    amal = data[1]
+    sorov_id = int(data[2])
+    xodim_id = int(data[3])
+    sana = data[4]
+
+    # Sabab olish
+    from database import connect
     conn = connect()
     cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    cur.execute("UPDATE davomat SET keldi_rasm=%s WHERE xodim_id=%s AND sana=%s",
-                (rasm_id, xodim_id, sana))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def ketdi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
-    conn = connect()
-    cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    vaqt = hozir().strftime("%H:%M")
-    cur.execute("SELECT keldi FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
+    cur.execute("SELECT sabab FROM sababli_sorovlar WHERE id=%s", (sorov_id,))
     row = cur.fetchone()
-    if not row or not row[0]:
-        cur.close()
-        conn.close()
-        return "❌ Avval keldi belgilanmagan!"
-    try:
-        keldi = datetime.strptime(row[0], "%H:%M")
-        ketdi = datetime.strptime(vaqt, "%H:%M")
-        daqiqalar = int((ketdi - keldi).total_seconds() / 60)
-        soat = daqiqalar // 60
-        daqiqa = daqiqalar % 60
-        ish_soat = round(daqiqalar / 60, 2)
-        ish_matn = f"{soat} soat {daqiqa} daqiqa"
-    except:
-        ish_soat = 0
-        ish_matn = "0 soat 0 daqiqa"
-    cur.execute('''UPDATE davomat SET ketdi=%s, ish_soat=%s, kiritdi=%s, kiritdi_id=%s
-                  WHERE xodim_id=%s AND sana=%s''',
-                (vaqt, ish_soat, kiritdi, kiritdi_id, xodim_id, sana))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return f"🚪 Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {ish_matn}"
-
-def ketdi_rasm_saqlash(xodim_id, rasm_id):
-    conn = connect()
-    cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    cur.execute("UPDATE davomat SET ketdi_rasm=%s WHERE xodim_id=%s AND sana=%s",
-                (rasm_id, xodim_id, sana))
-    conn.commit()
+    sabab = row[0] if row else ''
     cur.close()
     conn.close()
 
-def xodim_davomati(xodim_id, oy=None):
-    conn = connect()
-    cur = conn.cursor()
-    if oy:
-        cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
-                      FROM davomat WHERE xodim_id=%s AND sana LIKE %s ORDER BY sana''',
-                    (xodim_id, f"%{oy}%"))
-    else:
-        cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
-                      FROM davomat WHERE xodim_id=%s ORDER BY sana''', (xodim_id,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
+    holat = 'tasdiqlandi' if amal == 'tasdiqlash' else 'rad_etildi'
+    sababli_sorov_yangilash(sorov_id, holat, xodim_id, sana, sabab)
 
-def kompaniya_davomati(komp_id, oy=None):
-    conn = connect()
-    cur = conn.cursor()
-    if oy:
-        cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat,
-                      d.kechikish, d.holat, d.izoh, d.kiritdi
-                      FROM davomat d JOIN xodimlar x ON d.xodim_id=x.id
-                      WHERE d.kompaniya_id=%s AND d.sana LIKE %s ORDER BY d.sana''',
-                    (komp_id, f"%{oy}%"))
-    else:
-        cur.execute('''SELECT x.ism, d.sana, d.keldi, d.ketdi, d.ish_soat,
-                      d.kechikish, d.holat, d.izoh, d.kiritdi
-                      FROM davomat d JOIN xodimlar x ON d.xodim_id=x.id
-                      WHERE d.kompaniya_id=%s ORDER BY d.sana''', (komp_id,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
+    emoji = "✅" if amal == 'tasdiqlash' else "❌"
+    await query.edit_message_text(
+        f"{emoji} So'rov {holat}!\n\n"
+        f"📅 {sana}\n"
+        f"📋 {sabab}"
+    )
 
-def manual_davomat(xodim_id, komp_id, sana, keldi_vaqt, ketdi_vaqt,
-                   holat, izoh, kiritdi_ism, kiritdi_id):
-    conn = connect()
-    cur = conn.cursor()
-    ish_soat = 0
-    kechikish = 0
-    try:
-        keldi = datetime.strptime(keldi_vaqt, "%H:%M")
-        ketdi = datetime.strptime(ketdi_vaqt, "%H:%M")
-        daqiqalar = int((ketdi - keldi).total_seconds() / 60)
-        ish_soat = round(daqiqalar / 60, 2)
-        cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=%s", (xodim_id,))
-        xodim = cur.fetchone()
-        if xodim:
-            belgi = datetime.strptime(xodim[0], "%H:%M")
-            if keldi > belgi:
-                kechikish = int((keldi - belgi).total_seconds() / 60)
-    except:
-        pass
-    cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
-    if cur.fetchone():
-        cur.execute('''UPDATE davomat SET keldi=%s, ketdi=%s, ish_soat=%s,
-                      kechikish=%s, holat=%s, izoh=%s, kiritdi=%s, kiritdi_id=%s
-                      WHERE xodim_id=%s AND sana=%s''',
-                    (keldi_vaqt, ketdi_vaqt, ish_soat, kechikish,
-                     holat, izoh, kiritdi_ism, kiritdi_id, xodim_id, sana))
-    else:
-        cur.execute('''INSERT INTO davomat
-                      (xodim_id, kompaniya_id, sana, keldi, ketdi, ish_soat,
-                       kechikish, holat, izoh, kiritdi, kiritdi_id)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
-                    (xodim_id, komp_id, sana, keldi_vaqt, ketdi_vaqt, ish_soat,
-                     kechikish, holat, izoh, kiritdi_ism, kiritdi_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return "✅ Davomat kiritildi!"
+# ==================== XATO HANDLER ====================
 
-# ==================== SABABLI SO'ROVLAR ====================
+async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Xato: {context.error}")
 
-def sababli_sorov_saqlash(xodim_id, komp_id, sana, sabab):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute('''INSERT INTO sababli_sorovlar (xodim_id, kompaniya_id, sana, sabab)
-                  VALUES (%s, %s, %s, %s) RETURNING id''',
-                (xodim_id, komp_id, sana, sabab))
-    sorov_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return sorov_id
+# ==================== MAIN ====================
 
-def sababli_sorov_yangilash(sorov_id, holat, xodim_id, sana, sabab):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("UPDATE sababli_sorovlar SET holat=%s WHERE id=%s", (holat, sorov_id))
-    if holat == 'tasdiqlandi':
-        cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
-        if cur.fetchone():
-            cur.execute("UPDATE davomat SET holat='sababli', izoh=%s WHERE xodim_id=%s AND sana=%s",
-                       (sabab, xodim_id, sana))
-        else:
-            cur.execute('''INSERT INTO davomat (xodim_id, sana, holat, izoh)
-                          VALUES (%s, %s, 'sababli', %s)''', (xodim_id, sana, sabab))
-    conn.commit()
-    cur.close()
-    conn.close()
+def main():
+    create_tables()
+    print("Baza tayyor!")
 
-# ==================== HISOBOTLAR ====================
+    app = Application.builder().token(BOT_TOKEN).build()
 
-def header_style(ws, row, cols, text, fill_color="1F4E79"):
-    fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
-    font = Font(bold=True, color="FFFFFF", size=11)
-    for col in range(1, cols+1):
-        cell = ws.cell(row=row, column=col)
-        cell.fill = fill
-        cell.font = font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    ws.cell(row=row, column=1).value = text
+    conv = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            TELEFON: [MessageHandler(filters.CONTACT | filters.TEXT, telefon_qabul)],
+            KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, kod_tekshir)],
 
-def super_admin_hisobot():
-    conn = connect()
-    cur = conn.cursor()
-    wb = openpyxl.Workbook()
+            # Super Admin
+            SA_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_menu)],
+            SA_KOMP_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_menu)],
+            SA_KOMP_NOMI: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_nomi)],
+            SA_KOMP_ADMIN_TEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_admin_tel)],
+            SA_KOMP_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tanlash)],
+            SA_KOMP_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tahrir)],
+            SA_KOMP_TAHRIR_QIYMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tahrir_qiymat)],
+            SA_SOZ_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_soz_menu)],
 
-    # ── Varaq 1: Kompaniyalar ──
-    ws1 = wb.active
-    ws1.title = "Kompaniyalar"
-    ws1.append(["#", "Kompaniya nomi", "Admin telefon", "Holat",
-                "Xodimlar soni", "Yaratilgan sana"])
-    cur.execute("SELECT id, nomi, admin_telefon, holat, yaratilgan FROM kompaniyalar ORDER BY id")
-    kompaniyalar = cur.fetchall()
-    for i, k in enumerate(kompaniyalar, 1):
-        cur.execute("SELECT COUNT(*) FROM xodimlar WHERE kompaniya_id=%s", (k[0],))
-        xodim_soni = cur.fetchone()[0]
-        ws1.append([i, k[1], k[2], k[3], xodim_soni, k[4]])
+            # Admin
+            ADM_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_menu)],
+            ADM_XODIM_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_menu)],
+            ADM_XODIM_ISM: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_ism)],
+            ADM_XODIM_TEL: [MessageHandler(filters.CONTACT | filters.TEXT, adm_xodim_tel)],
+            ADM_XODIM_LAVOZIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_lavozim)],
+            ADM_XODIM_OYLIK: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_oylik)],
+            ADM_XODIM_ISH_BOSH: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_ish_bosh)],
+            ADM_XODIM_ISH_TUG: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_ish_tug)],
+            ADM_XODIM_ROL: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_rol)],
+            ADM_XODIM_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tanlash)],
+            ADM_XODIM_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir)],
+            ADM_XODIM_TAHRIR_QIYMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir_qiymat)],
+            ADM_GPS_LAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_lat)],
+            ADM_GPS_LON: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_lon)],
+            ADM_GPS_RADIUS: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_radius)],
 
-    # ── Varaq 2: Barcha xodimlar ──
-    ws2 = wb.create_sheet("Barcha xodimlar")
-    ws2.append(["#", "Kompaniya", "Ism", "Lavozim", "Telefon",
-                "Oylik", "Ish vaqti", "Rol", "Holat"])
-    cur.execute('''SELECT x.id, k.nomi, x.ism, x.lavozim, x.telefon,
-                  x.oylik, x.ish_boshlanish, x.ish_tugash, x.rol, x.holat
-                  FROM xodimlar x JOIN kompaniyalar k ON x.kompaniya_id=k.id
-                  ORDER BY k.id, x.id''')
-    xodimlar = cur.fetchall()
-    for i, x in enumerate(xodimlar, 1):
-        ws2.append([i, x[1], x[2], x[3], x[4], x[5],
-                    f"{x[6]}-{x[7]}", x[8], x[9]])
+            # HR
+            HR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_menu_handler)],
+            HR_MANUAL_XODIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_manual_xodim)],
+            HR_MANUAL_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_manual_sana)],
+            HR_MANUAL_KELDI: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_manual_keldi)],
+            HR_MANUAL_KETDI: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_manual_ketdi)],
+            HR_MANUAL_HOLAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_manual_holat)],
+            HR_MANUAL_IZOH: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_manual_izoh)],
 
-    # ── Varaq 3: Barcha davomat ──
-    ws3 = wb.create_sheet("Barcha davomat")
-    ws3.append(["#", "Kompaniya", "Xodim", "Lavozim", "Sana",
-                "Keldi", "Ketdi", "Ish vaqti", "Kechikish", "Holat", "Izoh"])
-    cur.execute('''SELECT k.nomi, x.ism, x.lavozim, d.sana, d.keldi, d.ketdi,
-                  d.ish_soat, d.kechikish, d.holat, d.izoh
-                  FROM davomat d
-                  JOIN xodimlar x ON d.xodim_id=x.id
-                  JOIN kompaniyalar k ON d.kompaniya_id=k.id
-                  ORDER BY k.id, d.sana''')
-    davomatlar = cur.fetchall()
-    for i, d in enumerate(davomatlar, 1):
-        ws3.append([i, d[0], d[1], d[2], d[3], d[4], d[5],
-                    soat_format(d[6]), kechikish_format(d[7]),
-                    d[8], d[9] or "—"])
+            # Xodim
+            XOD_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_menu)],
+            XOD_KELDI_GPS: [MessageHandler(filters.LOCATION, xod_keldi_gps)],
+            XOD_KELDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_keldi_rasm)],
+            XOD_KETDI_GPS: [MessageHandler(filters.LOCATION, xod_ketdi_gps)],
+            XOD_KETDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_ketdi_rasm)],
+            XOD_SABAB_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_sabab_sana)],
+            XOD_SABAB_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_sabab_matn)],
+        },
+        fallbacks=[CommandHandler('start', start)],
+        allow_reentry=True
+    )
 
-    # ── Varaq 4: Statistika ──
-    ws4 = wb.create_sheet("Statistika")
-    ws4.append(["Kompaniya", "Jami xodim", "Bugun kelgan",
-                "O'rtacha kechikish (daqiqa)", "Holat"])
-    bugun = hozir().strftime("%Y-%m-%d")
-    for k in kompaniyalar:
-        cur.execute("SELECT COUNT(*) FROM xodimlar WHERE kompaniya_id=%s", (k[0],))
-        jami = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM davomat WHERE kompaniya_id=%s AND sana=%s", (k[0], bugun))
-        bugun_kelgan = cur.fetchone()[0]
-        cur.execute("SELECT AVG(kechikish) FROM davomat WHERE kompaniya_id=%s", (k[0],))
-        ortacha = cur.fetchone()[0] or 0
-        ws4.append([k[1], jami, bugun_kelgan, round(ortacha, 1), k[3]])
+    app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(sorov_callback, pattern=r'^sorov_'))
+    app.add_error_handler(xato)
 
-    cur.close()
-    conn.close()
-    fayl = "super_hisobot.xlsx"
-    wb.save(fayl)
-    return fayl
+    print("Bot ishlamoqda...")
+    app.run_polling(drop_pending_updates=True)
 
-def kompaniya_hisobot(komp_id):
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT nomi FROM kompaniyalar WHERE id=%s", (komp_id,))
-    komp_nomi = cur.fetchone()[0]
-    wb = openpyxl.Workbook()
-
-    # ── Varaq 1: Xodimlar ──
-    ws1 = wb.active
-    ws1.title = "Xodimlar"
-    ws1.append(["#", "Ism", "Lavozim", "Telefon", "Oylik",
-                "Ish vaqti", "Rol", "Holat"])
-    cur.execute('''SELECT id, ism, lavozim, telefon, oylik,
-                  ish_boshlanish, ish_tugash, rol, holat
-                  FROM xodimlar WHERE kompaniya_id=%s ORDER BY id''', (komp_id,))
-    xodimlar = cur.fetchall()
-    for i, x in enumerate(xodimlar, 1):
-        ws1.append([i, x[1], x[2], x[3], x[4],
-                    f"{x[5]}-{x[6]}", x[7], x[8]])
-
-    # ── Varaq 2: Davomat ──
-    ws2 = wb.create_sheet("Davomat")
-    ws2.append(["#", "Xodim", "Lavozim", "Sana", "Keldi", "Ketdi",
-                "Ish vaqti", "Kechikish", "Holat", "Izoh", "Kim kiritdi"])
-    cur.execute('''SELECT x.ism, x.lavozim, d.sana, d.keldi, d.ketdi,
-                  d.ish_soat, d.kechikish, d.holat, d.izoh, d.kiritdi
-                  FROM davomat d JOIN xodimlar x ON d.xodim_id=x.id
-                  WHERE d.kompaniya_id=%s ORDER BY d.sana, x.ism''', (komp_id,))
-    davomatlar = cur.fetchall()
-    for i, d in enumerate(davomatlar, 1):
-        ws2.append([i, d[0], d[1], d[2], d[3], d[4],
-                    soat_format(d[5]), kechikish_format(d[6]),
-                    d[7], d[8] or "—", d[9] or "xodim"])
-
-    # ── Varaq 3: Oylik statistika ──
-    ws3 = wb.create_sheet("Oylik statistika")
-    ws3.append(["Xodim", "Lavozim", "Jami kun", "Jami ish soat",
-                "O'rtacha kechikish", "Kech kelgan kunlar"])
-    for x in xodimlar:
-        cur.execute('''SELECT COUNT(*), SUM(ish_soat), AVG(kechikish),
-                      COUNT(CASE WHEN kechikish > 0 THEN 1 END)
-                      FROM davomat WHERE xodim_id=%s''', (x[0],))
-        stat = cur.fetchone()
-        ws3.append([x[1], x[2], stat[0] or 0,
-                    soat_format(stat[1] or 0),
-                    kechikish_format(stat[2] or 0),
-                    stat[3] or 0])
-
-    cur.close()
-    conn.close()
-    fayl = f"hisobot_{komp_nomi}.xlsx"
-    wb.save(fayl)
-    return fayl
-
-create_tables()
-print("Baza tayyor!")
+if __name__ == '__main__':
+    main()
