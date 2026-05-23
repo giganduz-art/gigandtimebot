@@ -431,11 +431,11 @@ async def keldi_gps_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return KELDI_RASM
 
 async def keldi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
-        await update.message.reply_text("❌ Iltimos rasm yuboring!")
+    if not update.message.photo and not update.message.video_note:
+        await update.message.reply_text("❌ Iltimos rasm yoki dumaloq video yuboring!")
         return KELDI_RASM
     xodim_id = context.user_data.get('keldi_xodim_id')
-    rasm_id = update.message.photo[-1].file_id
+    rasm_id = update.message.photo[-1].file_id if update.message.photo else update.message.video_note.file_id
     natija = keldi_belgilash(xodim_id)
     keldi_rasm_saqlash(xodim_id, rasm_id)
     conn = connect(); cur = conn.cursor()
@@ -503,11 +503,11 @@ async def ketdi_gps_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return KETDI_RASM
 
 async def ketdi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
-        await update.message.reply_text("❌ Iltimos rasm yuboring!")
+    if not update.message.photo and not update.message.video_note:
+        await update.message.reply_text("❌ Iltimos rasm yoki dumaloq video yuboring!")
         return KETDI_RASM
     xodim_id = context.user_data.get('ketdi_xodim_id')
-    rasm_id = update.message.photo[-1].file_id
+    rasm_id = update.message.photo[-1].file_id if update.message.photo else update.message.video_note.file_id
     natija = ketdi_belgilash(xodim_id)
     ketdi_rasm_saqlash(xodim_id, rasm_id)
     conn = connect(); cur = conn.cursor()
@@ -836,9 +836,9 @@ def main():
             XODIM_ROL: [MessageHandler(filters.TEXT & ~filters.COMMAND, xodim_rol)],
             XODIM_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, xodim_kod)],
             KELDI_GPS: [MessageHandler(filters.LOCATION, keldi_gps_tekshir)],
-            KELDI_RASM: [MessageHandler(filters.PHOTO, keldi_rasm_olish)],
+            KELDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, keldi_rasm_olish)],
             KETDI_GPS: [MessageHandler(filters.LOCATION, ketdi_gps_tekshir)],
-            KETDI_RASM: [MessageHandler(filters.PHOTO, ketdi_rasm_olish)],
+            KETDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, ketdi_rasm_olish)],
             TAHRIR_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, tahrirlash_tanlash)],
             TAHRIR_QIYMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, tahrirlash_qiymat)],
             MANUAL_XODIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, manual_xodim)],
