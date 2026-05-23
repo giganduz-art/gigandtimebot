@@ -1227,6 +1227,9 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         oy = hozir().strftime("%Y-%m")
         stat = xodim_oy_statistika(xodim_id, oy)
         xodim = xodim_olish(xodim_id)
+        komp_id = context.user_data.get('komp_id')
+        streak = xodim_streak_olish(xodim_id)
+
         if stat:
             kun, jami_soat, kechikish_kun, jami_kechikish, sababli, sababsiz = stat
             s = int(float(jami_soat)); d = int((float(jami_soat) - s) * 60)
@@ -1238,9 +1241,20 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🕐 Jami kechikish: {kechikish_format(jami_kechikish)}\n"
                     f"📝 Sababli: {sababli} kun\n"
                     f"❌ Sababsiz: {sababsiz} kun")
-            # Streak tekshirish
-            if kechikish_kun == 0 and kun > 0:
-                xabar += f"\n\n🏅 *Bu oy 0 kechikish!* Ajoyib!"
+
+            # Streak va reyting
+            if streak > 0: xabar += f"\n\n🔥 *Streakingiz: {streak} kun!*"
+            if kechikish_kun == 0 and kun > 0: xabar += f"\n🏅 *Bu oy 0 kechikish!* Ajoyib!"
+
+            # Haftalik reyting
+            rating = haftalik_reyting_xodimlar(komp_id)
+            if rating:
+                xabar += f"\n\n🏆 *HAFTALIK TOP 5 XODIMLAR:*\n"
+                for i, r in enumerate(rating, 1):
+                    medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i-1]
+                    ort_kech = r[6] if r[6] else 0
+                    xabar += f"{medal} {r[1]} - {kechikish_format(int(ort_kech))} ort.kechikish\n"
+
             await update.message.reply_text(xabar, parse_mode='Markdown')
         else:
             await update.message.reply_text("📊 Bu oy ma'lumot yo'q.")
@@ -1316,8 +1330,18 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keldi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
     m = context.user_data.get('keldi_m', 0)
+
+    # MOTIVATSIYA: Streakni olish va motivatsiya matni yaratish
+    xodim = xodim_olish(xodim_id)
+    stat = xodim_bugun_statistika(xodim_id)
+    streak = xodim_streak_olish(xodim_id)
+    kechikish = int(stat[3]) if stat and stat[3] else 0
+
+    motivatsiya = generate_keldi_motivation(xodim, kechikish, streak)
+
     await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', m, rasm_id, is_photo)
-    await update.message.reply_text("✅ Davomat qabul qilindi!", reply_markup=xod_menu_kb())
+    await update.message.reply_text(f"✅ Davomat qabul qilindi!\n\n{motivatsiya}",
+                                     parse_mode='Markdown', reply_markup=xod_menu_kb())
     return XOD_MENU
 
 async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1365,8 +1389,20 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ketdi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
     m = context.user_data.get('ketdi_m', 0)
+
+    # MOTIVATSIYA: Bugungi statistika va motivatsiya matni
+    xodim = xodim_olish(xodim_id)
+    stat = xodim_bugun_statistika(xodim_id)
+    streak = xodim_streak_olish(xodim_id)
+    ish_tugash = xodim[6] if xodim else "18:00"
+    ketdi_vaqt = hozir().strftime("%H:%M")
+    ish_soat = stat[2] if stat and stat[2] else 0
+
+    motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, float(ish_soat), streak)
+
     await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', m, rasm_id, is_photo)
-    await update.message.reply_text("✅ Chiqish belgilandi!", reply_markup=xod_menu_kb())
+    await update.message.reply_text(f"✅ Chiqish belgilandi!\n\n{motivatsiya}",
+                                     parse_mode='Markdown', reply_markup=xod_menu_kb())
     return XOD_MENU
 
 async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=None, foto=True):
@@ -1385,6 +1421,14 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
     if kechikish > 0: xabar += f"⚠️ Kechikish: {kechikish_format(kechikish)}\n"
     if masofa > 0: xabar += f"📏 Masofa: {masofa}m\n"
     xabar += "━━━━━━━━━━━━━━━"
+
+    # ALERT: Jiddiy kechikish uchun warning
+    ogohlantirish = ""
+    if tur == 'keldi' and kechikish > 60:
+        ogohlantirish = f"\n\n🚨 *JIDDIY OGOHLANTIRISH!*\n{xodim[1]} 1 soatdan ko'p kechiktildi!"
+    elif tur == 'ketdi' and kechikish < -30:
+        ogohlantirish = f"\n\n🚨 *XODIM ERTA KETDI!*\n30+ daqiqa oldin ish joyini tark etdi!"
+
     admin_id = komp[3]
     hr_list = hr_idlari(komp_id)
     sa_list = barcha_super_admin_idlar()
@@ -1394,7 +1438,8 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
     for aid in barcha:
         # FIX 4+5: Matn va rasm uchun alohida try-except — biri xato bo'lsa ikkinchisi ishlaydi
         try:
-            await context.bot.send_message(aid, xabar, parse_mode='Markdown')
+            xabar_final = xabar + ogohlantirish
+            await context.bot.send_message(aid, xabar_final, parse_mode='Markdown')
         except Exception as e:
             logger.warning(f"Matn yuborishda xato (chat_id={aid}): {e}")
             try:

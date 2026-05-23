@@ -581,5 +581,104 @@ def kompaniya_hisobot(komp_id):
     fayl = f"hisobot_{nomi}.xlsx"
     wb.save(fayl); return fayl
 
+# ========== MOTIVATSIYA TIZIMI ==========
+
+def xodim_streak_olish(xodim_id):
+    """Xodimning davomiylik streakini olish"""
+    conn = connect(); cur = conn.cursor()
+    bugun = hozir().date()
+    cur.execute('''SELECT COUNT(*) FROM davomat
+                  WHERE xodim_id=%s AND keldi IS NOT NULL
+                  AND sana >= %s AND holat NOT IN ('kasal','ta\'til')
+                  ORDER BY sana DESC''', (xodim_id, str(bugun - timedelta(days=30))))
+    kunlar = cur.fetchall(); cur.close(); conn.close()
+
+    streak = 0
+    for i in range(30):
+        check_date = (bugun - timedelta(days=i)).strftime("%Y-%m-%d")
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s AND keldi IS NOT NULL", (xodim_id, check_date))
+        if cur.fetchone(): streak += 1
+        else: break
+        cur.close(); conn.close(); conn = connect()
+    return streak
+
+def haftalik_reyting_xodimlar(komp_id):
+    """Kompaniyaning haftalik top 5 xodimi"""
+    conn = connect(); cur = conn.cursor()
+    bugun = hozir().date()
+    dushanba = bugun - timedelta(days=bugun.weekday())
+    juma = dushanba + timedelta(days=4)
+
+    cur.execute('''SELECT x.id,x.ism,x.lavozim,
+                  COUNT(DISTINCT d.sana) as kun,
+                  COALESCE(SUM(d.ish_soat),0) as soat,
+                  COUNT(CASE WHEN d.kechikish>0 THEN 1 END) as kechikkan,
+                  COALESCE(AVG(d.kechikish),0) as ort_kechikish
+                  FROM xodimlar x
+                  LEFT JOIN davomat d ON x.id=d.xodim_id
+                  WHERE x.kompaniya_id=%s AND x.holat='faol'
+                  AND (d.sana IS NULL OR (d.sana>=%s AND d.sana<=%s AND d.holat NOT IN ('kasal','ta\'til')))
+                  GROUP BY x.id,x.ism,x.lavozim
+                  ORDER BY ort_kechikish ASC, kun DESC, soat DESC
+                  LIMIT 5''', (komp_id, str(dushanba), str(juma)))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
+
+def xodim_bugun_statistika(xodim_id):
+    """Bugungi xodim statistikasi"""
+    conn = connect(); cur = conn.cursor()
+    bugun = hozir().strftime("%Y-%m-%d")
+    cur.execute('''SELECT keldi,ketdi,ish_soat,kechikish,holat
+                  FROM davomat WHERE xodim_id=%s AND sana=%s''', (xodim_id, bugun))
+    r = cur.fetchone(); cur.close(); conn.close(); return r
+
+def generate_keldi_motivation(xodim, kechikish, streak):
+    """Keldi uchun motivatsiya matni"""
+    ism = xodim[1] if xodim else 'Xodim'
+    if kechikish == 0:
+        msg = f"🎉 *{ism}! Vaqtida keldingiz!*\n"
+        if streak >= 5: msg += f"🔥 {streak} kunlik streak! Zo'r!"
+        elif streak >= 3: msg += f"💪 {streak} kunlik davomiylik! Yaxshi!"
+        return msg
+    elif kechikish <= 15:
+        return f"⚠️ *{ism}!* Bugun {kechikish} daqiqaga kechiktingiz.\nKeying safar vaqtida keling!"
+    elif kechikish <= 60:
+        min_str = kechikish % 60
+        soat_str = kechikish // 60
+        return f"🚨 *DIQQAT!* {ism}, siz {soat_str} soat {min_str} daqiqaga kechiktingiz!\nBu intizom buzilishi!"
+    else:
+        soat_str = kechikish // 60
+        min_str = kechikish % 60
+        return f"❌ *JIDDIY OGOHLANTIRISH!* {soat_str} soat {min_str} daqiqaga kechiktingiz!\nHR ga ma'lumot berildi!"
+
+def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
+    """Ketdi uchun motivatsiya matni"""
+    ism = xodim[1] if xodim else 'Xodim'
+    try:
+        tug = datetime.strptime(ish_tugash, "%H:%M")
+        ket = datetime.strptime(ketdi_vaqt, "%H:%M")
+        farq = int((ket - tug).total_seconds() / 60)
+    except:
+        farq = 0
+
+    s = int(ish_soat); d = int((ish_soat - s) * 60)
+
+    if farq >= 30:
+        return (f"🌙 *QOLIB ISHLASH!* (+{farq} daqiqa ortiqcha)\n"
+                f"🏆 Rahmat, {ism}! Bugun {s} soat {d} daqiqa ishlading.\n"
+                f"Qo'shimcha mehnat ko'rishingiz qadrlanadi! 💪\n"
+                f"{'🔥 ' + str(streak) + ' kunlik streak!' if streak >= 3 else ''}")
+    elif farq >= -15:
+        return (f"✅ *TO'LIQ ISH KUNI!*\n"
+                f"Yaxshi ish, {ism}!\n⏱ {s} soat {d} daqiqa samarali mehnat. 💼\n"
+                f"{'🔥 Streakingiz: ' + str(streak) + ' kun!' if streak >= 3 else ''}")
+    elif farq >= -30:
+        return (f"⚠️ *ERTA KETISH* ({abs(farq)} daqiqa oldin)\n"
+                f"{ism}, ish vaqti tugamay ketdingiz.\n"
+                f"Sababini HR ga bildiring! 📋")
+    else:
+        return (f"❌ *JIDDIY ERTA KETISH!* ({abs(farq)} daqiqa oldin)\n"
+                f"Bu intizom buzilishi! HR va admin xabardor qilindi! 🚫")
+
 create_tables()
 print("Baza tayyor!")
