@@ -65,6 +65,7 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     ADM_XODIM_LAV, ADM_XODIM_OYLIK, ADM_XODIM_BOSH, ADM_XODIM_TUG,
     ADM_XODIM_ROL, ADM_XODIM_TANLASH, ADM_XODIM_TAHRIR, ADM_XODIM_TAHRIR_Q,
     ADM_GPS_LOK, ADM_GPS_RADIUS,
+    ADM_WIFI_AKTIV, ADM_WIFI_SSID,
     ADM_DAV_MENU, ADM_DAV_XODIM, ADM_DAV_SANA, ADM_DAV_KELDI,
     ADM_DAV_KETDI, ADM_DAV_HOLAT, ADM_DAV_IZOH,
     ADM_DAV_TAHRIR_TANLASH, ADM_DAV_TAHRIR_AMAL, ADM_DAV_TAHRIR_Q,
@@ -76,7 +77,7 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     XOD_SABAB_SANA, XOD_SABAB_MATN,
     SA_KOMP_DELETE_KOD,
     SA_HISOBOT_SANA, SA_HISOBOT_KUN,
-) = range(62)
+) = range(64)
 
 # ==================== MENYULAR ====================
 
@@ -91,7 +92,8 @@ def adm_menu_kb():
     return ReplyKeyboardMarkup([
         ["👥 Xodimlar", "📅 Davomat"],
         ["📊 Hisobot", "📍 GPS sozlash"],
-        ["📋 Audit Log", "🏠 Bosh menu"]
+        ["📡 WiFi sozlash", "📋 Audit Log"],
+        ["🏠 Bosh menu"]
     ], resize_keyboard=True)
 
 def hr_menu_kb():
@@ -819,6 +821,21 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
         return ADM_GPS_LOK
 
+    elif matn == "📡 WiFi sozlash":
+        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+        holat = "✅ YONIQ" if wifi_aktiv else "❌ OCHIQ"
+        await update.message.reply_text(
+            f"📡 *WiFi Aniqlash Sozlamalari*\n\n"
+            f"Holati: {holat}\n"
+            f"WiFi nomi: {wifi_ssid if wifi_ssid else '(belgilanmagan)'}\n\n"
+            f"Qanday qilish kerak?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["✅ Yoqish", "❌ O'chirish"],
+                ["✏️ Nomini o'zgartirish", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return ADM_WIFI_AKTIV
+
     elif matn == "📋 Audit Log":
         komp_id = context.user_data.get('komp_id')
         logs = audit_log_olish(komp_id, limit=15)
@@ -1235,6 +1252,60 @@ async def adm_hisobot_kun_display(update: Update, context: ContextTypes.DEFAULT_
                     pass
 
     await update.message.reply_text("✅ Hisobot yakunlandi!", reply_markup=adm_menu_kb())
+    return ADM_MENU
+
+# ==================== ADMIN WiFi SETTINGS ====================
+
+async def adm_wifi_aktiv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """WiFi aniqlash yoq/on"""
+    komp_id = context.user_data.get('komp_id')
+    matn = update.message.text.strip()
+
+    if matn == "✅ Yoqish":
+        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+        if not wifi_ssid:
+            await update.message.reply_text(
+                "📡 Avval WiFi nomini kiriting (SSID):\n\n"
+                "Masalan: GIGAND_OFFICE",
+                reply_markup=ReplyKeyboardRemove())
+            return ADM_WIFI_SSID
+        wifi_sozla(komp_id, True, wifi_ssid)
+        await update.message.reply_text(f"✅ WiFi yoqildi! SSID: {wifi_ssid}", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    elif matn == "❌ O'chirish":
+        wifi_sozla(komp_id, False, "")
+        await update.message.reply_text("✅ WiFi o'chirildi!", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    elif matn == "✏️ Nomini o'zgartirish":
+        await update.message.reply_text(
+            "📡 Yangi WiFi nomini kiriting (SSID):\n\n"
+            "Masalan: 112233",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_WIFI_SSID
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    return ADM_WIFI_AKTIV
+
+async def adm_wifi_ssid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """WiFi nomi o'rnatish"""
+    komp_id = context.user_data.get('komp_id')
+    ssid = update.message.text.strip()
+
+    if not ssid or len(ssid) < 2:
+        await update.message.reply_text("❌ Haqiqiy WiFi nomini kiriting!")
+        return ADM_WIFI_SSID
+
+    wifi_aktiv, _ = get_wifi(komp_id)
+    wifi_sozla(komp_id, wifi_aktiv or True, ssid)
+    await update.message.reply_text(
+        f"✅ WiFi nomi saqlandi: {ssid}\n"
+        f"Holati: {'✅ YONIQ' if wifi_aktiv else '✅ YOQILDI'}",
+        reply_markup=adm_menu_kb())
     return ADM_MENU
 
 # ==================== HR PANEL ====================
@@ -2016,6 +2087,8 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_lok),
             ],
             ADM_GPS_RADIUS: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_radius)],
+            ADM_WIFI_AKTIV: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_wifi_aktiv)],
+            ADM_WIFI_SSID: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_wifi_ssid)],
             ADM_DAV_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_menu)],
             ADM_DAV_XODIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_xodim)],
             ADM_DAV_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_sana)],
