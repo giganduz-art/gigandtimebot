@@ -5,8 +5,14 @@ from database import (connect, create_tables, keldi_belgilash, ketdi_belgilash,
                       excel_hisobot, soat_format, kechikish_format, manual_davomat,
                       ADMIN_TELEFON)
 from datetime import datetime
+import pytz
 import os
 import math
+
+TASHKENT = pytz.timezone('Asia/Tashkent')
+
+def hozir():
+    return datetime.now(TASHKENT)
 
 TOKEN = "8728106880:AAH0lQlLcgNI0czxmEbCJXIDE6vVmTS47fU"
 
@@ -441,7 +447,7 @@ async def keldi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = connect(); cur = conn.cursor()
     cur.execute("SELECT ism, lavozim, kompaniya_id FROM xodimlar WHERE id=%s", (xodim_id,))
     xodim = cur.fetchone()
-    cur.execute("SELECT kechikish FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, datetime.now().strftime("%Y-%m-%d")))
+    cur.execute("SELECT kechikish FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, hozir().strftime("%Y-%m-%d")))
     dav = cur.fetchone()
     cur.close(); conn.close()
     kechikish = dav[0] if dav else 0
@@ -450,7 +456,7 @@ async def keldi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = get_admin_id()
     hr_ids = get_hr_ids(xodim[2])
     xabar = (f"📨 KELDI XABARI\n━━━━━━━━━━━━━━━\n👤 {xodim[0]}\n💼 {xodim[1]}\n"
-             f"⏰ {datetime.now().strftime('%H:%M')}\n⚠️ Kechikish: {kechikish_format(kechikish)}\n"
+             f"⏰ {hozir().strftime('%H:%M')}\n⚠️ Kechikish: {kechikish_format(kechikish)}\n"
              f"📏 Masofa: {context.user_data.get('keldi_masofa')} metr\n━━━━━━━━━━━━━━━")
     bot = update.get_bot()
     if admin_id:
@@ -519,7 +525,7 @@ async def ketdi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = connect(); cur = conn.cursor()
     cur.execute("SELECT ism, lavozim, kompaniya_id, ish_tugash FROM xodimlar WHERE id=%s", (xodim_id,))
     xodim = cur.fetchone()
-    cur.execute("SELECT ish_soat FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, datetime.now().strftime("%Y-%m-%d")))
+    cur.execute("SELECT ish_soat FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, hozir().strftime("%Y-%m-%d")))
     dav = cur.fetchone()
     cur.close(); conn.close()
     ish_soat = dav[0] if dav else 0
@@ -533,7 +539,7 @@ async def ketdi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = get_admin_id()
     hr_ids = get_hr_ids(xodim[2])
     xabar = (f"📨 KETDI XABARI\n━━━━━━━━━━━━━━━\n👤 {xodim[0]}\n💼 {xodim[1]}\n"
-             f"⏰ {datetime.now().strftime('%H:%M')}\n⏱ Ish vaqti: {soat_format(ish_soat)}\n"
+             f"⏰ {hozir().strftime('%H:%M')}\n⏱ Ish vaqti: {soat_format(ish_soat)}\n"
              f"📏 Masofa: {context.user_data.get('ketdi_masofa')} metr\n━━━━━━━━━━━━━━━")
     bot = update.get_bot()
     if admin_id:
@@ -658,7 +664,7 @@ async def sababli_sorov_saqlash(update: Update, context: ContextTypes.DEFAULT_TY
         cur.close(); conn.close()
         await update.message.reply_text("❌ Siz ro'yxatdan o'tmagansiz!")
         return ConversationHandler.END
-    sana = datetime.now().strftime("%Y-%m-%d")
+    sana = hozir().strftime("%Y-%m-%d")
     cur.execute("INSERT INTO sababli_sorovlar (xodim_id, sana, sabab) VALUES (%s, %s, %s) RETURNING id", (xodim[0], sana, sabab))
     sorov_id = cur.fetchone()[0]
     conn.commit(); cur.close(); conn.close()
