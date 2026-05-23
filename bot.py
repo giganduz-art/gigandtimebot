@@ -1268,6 +1268,18 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lat = update.message.location.latitude
     lon = update.message.location.longitude
     live_period = getattr(update.message.location, 'live_period', None)
+    komp = kompaniya_olish(komp_id)
+
+    # FIX 1: Live GPS yoqilgan bo'lsa, oddiy lokatsiyani qabul qilma
+    if komp and komp[14] and not live_period:
+        btn = [[KeyboardButton("📍 Lokatsiya yuborish", request_location=True)]]
+        await update.message.reply_text(
+            "❌ Bu kompaniya uchun 📡 *Live lokatsiya* kerak!\n\n"
+            "📌 Lokatsiya yuborishda *'Real vaqt lokatsiyasi'* (8 soat) tugmasini tanlang!",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+        return XOD_KELDI_GPS
+
     komp_lat, komp_lon, radius = get_gps(komp_id)
     m = masofa_hisob(lat, lon, komp_lat, komp_lon)
     if m > radius:
@@ -1275,10 +1287,11 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Ish joyidan tashqarisiz!\n📏 {m}m (ruxsat: {radius}m)",
             reply_markup=xod_menu_kb())
         return XOD_MENU
-    komp = kompaniya_olish(komp_id)
+
     # Live lokatsiyani saqlash
-    if live_period and komp[14]:
+    if live_period and komp and komp[14]:
         live_lokatsiya_saqlash(xodim_id, komp_id, lat, lon)
+
     natija = keldi_belgilash(xodim_id, komp_id)
     if natija == "already":
         await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
@@ -1286,13 +1299,14 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, vaqt, kechikish = natija.split("|")
     msg = f"✅ Keldi vaqti: {vaqt}\n📏 {m}m"
     if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
-    if live_period and komp[14]: msg += "\n📡 Live lokatsiya faol"
-    if komp and komp[10]:  # Selfie aktiv
-        await update.message.reply_text(f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
-        return XOD_KELDI_RASM
-    await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', m)
-    await update.message.reply_text(msg, reply_markup=xod_menu_kb())
-    return XOD_MENU
+    if live_period and komp and komp[14]: msg += "\n📡 Live lokatsiya faol"
+
+    # FIX 2: DOIM selfie/video so'ra (komp[10] dan qat'iy nazar)
+    context.user_data['keldi_m'] = m
+    await update.message.reply_text(
+        f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:",
+        reply_markup=ReplyKeyboardRemove())
+    return XOD_KELDI_RASM
 
 async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo and not update.message.video_note:
@@ -1300,11 +1314,12 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_KELDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
-    is_photo = update.message.photo is not None
+    is_photo = bool(update.message.photo)  # FIX: to'g'ri tekshiruv
     rasm_id = update.message.photo[-1].file_id if is_photo else update.message.video_note.file_id
     keldi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
-    await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, rasm_id, is_photo)
+    m = context.user_data.get('keldi_m', 0)
+    await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', m, rasm_id, is_photo)
     await update.message.reply_text("✅ Davomat qabul qilindi!", reply_markup=xod_menu_kb())
     return XOD_MENU
 
@@ -1333,12 +1348,14 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xabar = ketdi_xabar_matni(xodim[1] if xodim else '', ish_tugash, vaqt, float(ish_soat))
     xabar += f"\n📏 {m}m"
     live_lokatsiya_ochirish(xodim_id)
-    if komp and komp[10]:
-        await update.message.reply_text(f"{xabar}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
-        return XOD_KETDI_RASM
-    await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', m)
-    await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=xod_menu_kb())
-    return XOD_MENU
+
+    # FIX 2+3: DOIM selfie/video so'ra + parse_mode='Markdown' qo'sh
+    context.user_data['ketdi_m'] = m
+    await update.message.reply_text(
+        f"{xabar}\n\n📸 Selfie yoki 🎥 video yuboring:",
+        parse_mode='Markdown',
+        reply_markup=ReplyKeyboardRemove())
+    return XOD_KETDI_RASM
 
 async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo and not update.message.video_note:
@@ -1346,11 +1363,12 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_KETDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
-    is_photo = update.message.photo is not None
+    is_photo = bool(update.message.photo)  # FIX: to'g'ri tekshiruv
     rasm_id = update.message.photo[-1].file_id if is_photo else update.message.video_note.file_id
     ketdi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
-    await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, rasm_id, is_photo)
+    m = context.user_data.get('ketdi_m', 0)
+    await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', m, rasm_id, is_photo)
     await update.message.reply_text("✅ Chiqish belgilandi!", reply_markup=xod_menu_kb())
     return XOD_MENU
 
@@ -1375,10 +1393,21 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
     sa_list = barcha_super_admin_idlar()
     # Takrorlanmasin
     barcha = list(set(([admin_id] if admin_id else []) + hr_list + sa_list))
+    logger.info(f"_admin_xabar: {tur} | xodim={xodim[1]} | recipients={barcha} | rasm_id={rasm_id}")
     for aid in barcha:
+        # FIX 4+5: Matn va rasm uchun alohida try-except — biri xato bo'lsa ikkinchisi ishlaydi
         try:
             await context.bot.send_message(aid, xabar, parse_mode='Markdown')
-            if rasm_id:
+        except Exception as e:
+            logger.warning(f"Matn yuborishda xato (chat_id={aid}): {e}")
+            try:
+                # Markdown xatosi bo'lsa, formatsiz matn
+                xabar_oddiy = xabar.replace('*', '').replace('_', '').replace('`', '')
+                await context.bot.send_message(aid, xabar_oddiy)
+            except Exception as e2:
+                logger.error(f"Oddiy matn ham yuborilmadi (chat_id={aid}): {e2}")
+        if rasm_id:
+            try:
                 if foto:
                     await context.bot.send_photo(aid, rasm_id)
                 else:
@@ -1386,7 +1415,8 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
                         await context.bot.send_video_note(aid, rasm_id)
                     except:
                         await context.bot.send_video(aid, rasm_id)
-        except: pass
+            except Exception as e:
+                logger.warning(f"Rasm/video yuborishda xato (chat_id={aid}): {e}")
 
 async def xod_sabab_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['sabab_sana'] = update.message.text.strip()
