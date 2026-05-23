@@ -1,8 +1,10 @@
 import os, math, logging, random, string
-from datetime import datetime
+from datetime import datetime, time as dtime
 import pytz
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, filters, ContextTypes
+from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
+                      InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove)
+from telegram.ext import (Application, CommandHandler, MessageHandler,
+                          CallbackQueryHandler, ConversationHandler, filters, ContextTypes)
 from database import *
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +22,33 @@ def masofa_hisob(lat1, lon1, lat2, lon2):
     dlat, dlon = lat2-lat1, lon2-lon1
     a = math.sin(dlat/2)**2 + math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
     return round(R * 2 * math.asin(math.sqrt(a)))
+
+def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
+    try:
+        tug = datetime.strptime(ish_tugash, "%H:%M")
+        ket = datetime.strptime(ketdi_vaqt, "%H:%M")
+        farq = int((ket - tug).total_seconds() / 60)
+        s = int(ish_soat); d = int((ish_soat - s) * 60)
+        if farq >= 30:
+            return (f"🌙 *QOLIB ISHLASH* (+{farq} daqiqa ortiqcha)\n"
+                    f"Rahmat, {ism}! Bugun {s} soat {d} daqiqa ishlading.\n"
+                    f"Qo'shimcha {farq} daqiqa qolib ishlading! 🏆\n"
+                    f"Bunday fidoyilik qadrlanadi!")
+        elif farq >= -15:
+            return (f"✅ *TO'LIQ ISH KUNI*\n"
+                    f"Yaxshi ish kuni, {ism}!\n"
+                    f"Bugun {s} soat {d} daqiqa samarali mehnat qildingiz! 💼\n"
+                    f"Xayrli oqshom!")
+        elif farq >= -30:
+            return (f"⚠️ *ERTA KETISH* ({-farq} daqiqa oldin)\n"
+                    f"Diqqat, {ism}! Ish vaqti tugamay {-farq} daqiqa oldin ketdingiz.\n"
+                    f"Sababini HR ga bildiring! 📋")
+        else:
+            return (f"❗ *JIDDIY ERTA KETISH* ({-farq} daqiqa oldin)\n"
+                    f"Ogohlantirish, {ism}! {-farq} daqiqa oldin ketdingiz.\n"
+                    f"Bu intizom buzilishi! Rahbariyat xabardor qilindi! 🚫")
+    except:
+        return f"🚪 Ketdi vaqti: {ketdi_vaqt}"
 
 # ==================== STATES ====================
 (
@@ -42,7 +71,8 @@ def masofa_hisob(lat1, lon1, lat2, lon2):
     XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM,
     XOD_KETDI_GPS, XOD_KETDI_RASM,
     XOD_SABAB_SANA, XOD_SABAB_MATN,
-) = range(57)
+    SA_KOMP_DELETE_KOD,
+) = range(58)
 
 # ==================== MENYULAR ====================
 
@@ -68,9 +98,15 @@ def hr_menu_kb():
 def xod_menu_kb():
     return ReplyKeyboardMarkup([
         ["✅ Keldim", "🚪 Ketdim"],
-        ["📋 Davomatim", "📝 Sababli so'rov"],
-        ["🏠 Bosh menu"]
+        ["📋 Davomatim", "📊 Statistikam"],
+        ["📝 Sababli so'rov", "🏠 Bosh menu"]
     ], resize_keyboard=True)
+
+def start_kb():
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton("▶️ Botni ishga tushirish")]],
+        resize_keyboard=True, one_time_keyboard=True
+    )
 
 # ==================== START ====================
 
@@ -78,27 +114,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     context.user_data.clear()
 
-    # Super Admin
     if super_admin_id_tekshir(user_id):
         await update.message.reply_text("👑 Super Admin paneliga xush kelibsiz!", reply_markup=sa_menu_kb())
         return SA_MENU
 
-    # Kompaniya admin
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, nomi, holat FROM kompaniyalar WHERE admin_id=%s", (user_id,))
-    adm_komp = cur.fetchone()
-    cur.close(); conn.close()
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id,nomi,holat FROM kompaniyalar WHERE admin_id=%s", (user_id,))
+    adm_komp = cur.fetchone(); cur.close(); conn.close()
 
     if adm_komp:
         if adm_komp[2] != 'faol':
             await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
             return ConversationHandler.END
         context.user_data['komp_id'] = adm_komp[0]
-        await update.message.reply_text(f"🏢 Admin paneliga xush kelibsiz!", reply_markup=adm_menu_kb())
+        await update.message.reply_text("🏢 Admin paneliga xush kelibsiz!", reply_markup=adm_menu_kb())
         return ADM_MENU
 
-    # Xodim
     xodim = telegram_id_orqali_xodim(user_id)
     if xodim:
         komp = kompaniya_olish(xodim[3])
@@ -113,10 +144,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"👋 Xush kelibsiz, {xodim[1]}!", reply_markup=xod_menu_kb())
             return XOD_MENU
 
+    murojaat = get_murojaat_raqam()
     btn = [[KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)]]
-    await update.message.reply_text("👋 Xush kelibsiz!\n\nTelefon raqamingizni yuboring:",
+    await update.message.reply_text(
+        f"👋 Xush kelibsiz!\n\n"
+        f"Telefon raqamingizni yuboring.\n\n"
+        f"❓ Agar tizimda yo'q bo'lsangiz:\n"
+        f"📞 Murojaat: +998{murojaat}",
         reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
     return TELEFON
+
+async def boshlash_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """▶️ tugmasi uchun"""
+    return await start(update, context)
 
 async def telefon_qabul(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
@@ -127,13 +167,11 @@ async def telefon_qabul(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     context.user_data['telefon'] = telefon
 
-    # Super admin
     if super_admin_tekshir(telefon):
         context.user_data['tip'] = 'super_admin'
         await update.message.reply_text("🔐 Super Admin kodini kiriting:", reply_markup=ReplyKeyboardRemove())
         return KOD
 
-    # Kompaniya admin
     komp = admin_telefon_orqali_kompaniya(telefon)
     if komp:
         komp_id, komp_nomi, holat, admin_kod = komp
@@ -144,14 +182,16 @@ async def telefon_qabul(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🏢 {komp_nomi}\n\n🔐 Admin kodini kiriting:", reply_markup=ReplyKeyboardRemove())
         return KOD
 
-    # Xodim
     xodim = telefon_orqali_xodim(telefon)
     if xodim:
         context.user_data.update({'tip': xodim[2], 'xodim_id': xodim[0], 'ism': xodim[1], 'komp_id': xodim[3]})
         await update.message.reply_text(f"👋 {xodim[1]}\n\n🔐 Kodni kiriting:", reply_markup=ReplyKeyboardRemove())
         return KOD
 
-    await update.message.reply_text("❌ Siz tizimda yo'qsiz. Adminiga murojaat qiling.", reply_markup=ReplyKeyboardRemove())
+    murojaat = get_murojaat_raqam()
+    await update.message.reply_text(
+        f"❌ Siz tizimda yo'qsiz.\n\n📞 Murojaat uchun: +998{murojaat}",
+        reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 async def kod_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,6 +223,7 @@ async def kod_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Noto'g'ri kod!")
             return KOD
         xodim_telegram_saqlash(xodim_id, user_id)
+        context.user_data['komp_id'] = xodim[9]
         if tip == 'hr':
             await update.message.reply_text("✅ HR sifatida kirdingiz!", reply_markup=hr_menu_kb())
             return HR_MENU
@@ -224,14 +265,17 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif matn == "🔐 Sozlamalar":
         sa = super_admin_olish(user_id)
+        murojaat = get_murojaat_raqam()
         await update.message.reply_text(
             f"🔐 *Sozlamalar*\n\n"
             f"👤 Ism: {sa[2] if sa else '—'}\n"
-            f"📱 Telefon: {sa[1] if sa else '—'}",
+            f"📱 Telefon: {sa[1] if sa else '—'}\n"
+            f"📞 Murojaat raqami: {murojaat}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["🔑 Kodni o'zgartirish", "📱 Telefon o'zgartirish"],
-                ["👤 Ism o'zgartirish", "🔙 Orqaga"]
+                ["👤 Ism o'zgartirish", "📞 Murojaat raqami"],
+                ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_SOZ_MENU
 
@@ -241,9 +285,7 @@ async def sa_kompaniyalar_korsatish(update, context):
     kompaniyalar = barcha_kompaniyalar()
     if not kompaniyalar:
         await update.message.reply_text("📋 Hozircha kompaniya yo'q.",
-            reply_markup=ReplyKeyboardMarkup([
-                ["➕ Yangi kompaniya", "🔙 Orqaga"]
-            ], resize_keyboard=True))
+            reply_markup=ReplyKeyboardMarkup([["➕ Yangi kompaniya", "🔙 Orqaga"]], resize_keyboard=True))
     else:
         xabar = "🏢 *Kompaniyalar:*\n\n"
         for k in kompaniyalar:
@@ -272,8 +314,7 @@ async def sa_komp_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return SA_KOMP_LIST
         context.user_data['sa_komp_id'] = komp_id
         emoji = "✅" if komp[4] == 'faol' else "🔴"
-        xabar = (f"🏢 *{komp[1]}*\n"
-                f"━━━━━━━━━━━━━━━\n"
+        xabar = (f"🏢 *{komp[1]}*\n━━━━━━━━━━━━━━━\n"
                 f"📞 Admin tel: {komp[2] or '—'}\n"
                 f"🔑 Admin kodi: `{komp[13] or '—'}`\n"
                 f"📍 GPS: {komp[5]}, {komp[6]}\n"
@@ -281,10 +322,11 @@ async def sa_komp_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Holat: {emoji} {komp[4]}\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"⚙️ Funksiyalar:\n"
-                f"📍GPS: {'✅' if komp[9] else '❌'} "
-                f"🤳Selfie: {'✅' if komp[10] else '❌'} "
-                f"👤FaceID: {'✅' if komp[11] else '❌'} "
-                f"📷Hikvision: {'✅' if komp[12] else '❌'}")
+                f"📍GPS:{'✅' if komp[9] else '❌'} "
+                f"📡LiveGPS:{'✅' if komp[14] else '❌'} "
+                f"🤳Selfie:{'✅' if komp[10] else '❌'} "
+                f"👤FaceID:{'✅' if komp[11] else '❌'} "
+                f"📷Hikvision:{'✅' if komp[12] else '❌'}")
         await update.message.reply_text(xabar, parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["✏️ Tahrirlash", "⚙️ Funksiyalar"],
@@ -315,8 +357,7 @@ async def sa_komp_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ *Kompaniya yaratildi!*\n\n"
         f"🏢 {context.user_data['y_nomi']}\n"
         f"📞 {context.user_data['y_tel']}\n"
-        f"🔑 Admin kodi: `{admin_kod}`\n"
-        f"🆔 ID: {komp_id}",
+        f"🔑 Admin kodi: `{admin_kod}`\n🆔 ID: {komp_id}",
         parse_mode='Markdown', reply_markup=sa_menu_kb())
     return SA_MENU
 
@@ -338,15 +379,17 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_MENU
 
     elif matn == "🗑 O'chirish":
-        kompaniya_ochirish(komp_id)
-        await update.message.reply_text("🗑 Kompaniya o'chirildi!", reply_markup=sa_menu_kb())
-        return SA_MENU
+        komp = kompaniya_olish(komp_id)
+        await update.message.reply_text(
+            f"⚠️ *{komp[1]}* kompaniyasini o'chirmoqchisiz!\n\n"
+            f"Tasdiqlash uchun *maxfiy kodingizni* kiriting:",
+            parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+        return SA_KOMP_DELETE_KOD
 
     elif matn == "✏️ Tahrirlash":
         komp = kompaniya_olish(komp_id)
         await update.message.reply_text(
-            f"✏️ *{komp[1]}* tahrirlash:",
-            parse_mode='Markdown',
+            f"✏️ *{komp[1]}* tahrirlash:", parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📝 Nomi", "📞 Admin telefon"],
                 ["🔑 Admin kodi", "📍 GPS"],
@@ -358,13 +401,16 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         komp = kompaniya_olish(komp_id)
         await update.message.reply_text(
             f"⚙️ *{komp[1]}* funksiyalari:\n\n"
-            f"📍 GPS: {'✅' if komp[9] else '❌'}\n"
+            f"📍 GPS (oddiy): {'✅' if komp[9] else '❌'}\n"
+            f"📡 GPS Live: {'✅' if komp[14] else '❌'}\n"
+            f"⏱ 30-daqiqa tekshiruv: {'✅' if komp[15] else '❌'}\n"
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
             f"📷 Hikvision: {'✅' if komp[12] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
-                ["📍 GPS", "🤳 Selfie"],
+                ["📍 GPS", "📡 GPS Live"],
+                ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
                 ["🔙 Orqaga"]
             ], resize_keyboard=True))
@@ -375,7 +421,7 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not xodimlar:
             await update.message.reply_text("👥 Xodimlar yo'q.")
             return SA_KOMP_TANLASH
-        xabar = f"👥 *Xodimlar:*\n\n"
+        xabar = "👥 *Xodimlar:*\n\n"
         tugmalar = []
         for x in xodimlar:
             xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
@@ -413,6 +459,18 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_KOMP_TANLASH
 
     return SA_KOMP_TANLASH
+
+async def sa_komp_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kod = update.message.text.strip()
+    komp_id = context.user_data.get('sa_komp_id')
+    if not super_admin_kod_tekshir(kod):
+        await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=sa_menu_kb())
+        return SA_MENU
+    komp = kompaniya_olish(komp_id)
+    nomi = komp[1] if komp else ''
+    kompaniya_ochirish(komp_id)
+    await update.message.reply_text(f"🗑 *{nomi}* o'chirildi!", parse_mode='Markdown', reply_markup=sa_menu_kb())
+    return SA_MENU
 
 async def sa_komp_amal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
@@ -466,33 +524,35 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_MENU
     komp = kompaniya_olish(komp_id)
     funksiya_map = {
-        "📍 GPS": ("gps_aktiv", komp[9]),
-        "🤳 Selfie": ("selfie_aktiv", komp[10]),
-        "👤 Face ID": ("face_id_aktiv", komp[11]),
-        "📷 Hikvision": ("hikvision_aktiv", komp[12]),
+        "📍 GPS":               ("gps_aktiv", komp[9]),
+        "📡 GPS Live":          ("live_gps_aktiv", komp[14]),
+        "⏱ 30-daqiqa tekshiruv": ("live_gps_tekshiruv", komp[15]),
+        "🤳 Selfie":            ("selfie_aktiv", komp[10]),
+        "👤 Face ID":           ("face_id_aktiv", komp[11]),
+        "📷 Hikvision":         ("hikvision_aktiv", komp[12]),
     }
     if matn in funksiya_map:
         maydon, hozirgi = funksiya_map[matn]
-        yangi = not hozirgi
-        kompaniya_funksiya_ozgartir(komp_id, maydon, yangi)
-        # Yangilangan holatni ko'rsatish
+        kompaniya_funksiya_ozgartir(komp_id, maydon, not hozirgi)
         komp = kompaniya_olish(komp_id)
         await update.message.reply_text(
-            f"⚙️ *{komp[1]}* funksiyalari yangilandi:\n\n"
-            f"📍 GPS: {'✅' if komp[9] else '❌'}\n"
+            f"⚙️ *{komp[1]}* funksiyalari:\n\n"
+            f"📍 GPS (oddiy): {'✅' if komp[9] else '❌'}\n"
+            f"📡 GPS Live: {'✅' if komp[14] else '❌'}\n"
+            f"⏱ 30-daqiqa tekshiruv: {'✅' if komp[15] else '❌'}\n"
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
             f"📷 Hikvision: {'✅' if komp[12] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
-                ["📍 GPS", "🤳 Selfie"],
+                ["📍 GPS", "📡 GPS Live"],
+                ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
                 ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
     return SA_FUNKSIYA
 
-# Super Admin - xodimlar boshqaruvi
 async def sa_komp_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     komp_id = context.user_data.get('sa_komp_id')
@@ -540,14 +600,10 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
-    xodim_id = context.user_data.get('tahrir_xodim_id')
     if matn == "🔙 Orqaga":
         await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
         return SA_MENU
-    maydon_map = {
-        "📝 Ism": "ism", "💼 Lavozim": "lavozim",
-        "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"
-    }
+    maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
         await update.message.reply_text(f"Yangi {matn}:", reply_markup=ReplyKeyboardRemove())
@@ -560,7 +616,6 @@ async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYP
         return ADM_XODIM_TAHRIR_Q
     return SA_KOMP_XODIM_TAHRIR
 
-# Super Admin - adminlar
 async def sa_adm_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     user_id = update.effective_user.id
@@ -602,24 +657,20 @@ async def sa_adm_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return SA_ADM_LIST
     elif context.user_data.get('sa_amal') == 'mening':
         if matn == "📱 Telefonni o'zgartirish":
-            await update.message.reply_text("Yangi telefon raqamini kiriting:", reply_markup=ReplyKeyboardRemove())
-            context.user_data['sa_tahrir'] = 'telefon'
-            return SA_ADM_LIST
+            await update.message.reply_text("Yangi telefon:", reply_markup=ReplyKeyboardRemove())
+            context.user_data['sa_tahrir'] = 'telefon'; return SA_ADM_LIST
         elif matn == "👤 Ismni o'zgartirish":
-            await update.message.reply_text("Yangi ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
-            context.user_data['sa_tahrir'] = 'ism'
-            return SA_ADM_LIST
+            await update.message.reply_text("Yangi ism:", reply_markup=ReplyKeyboardRemove())
+            context.user_data['sa_tahrir'] = 'ism'; return SA_ADM_LIST
         elif context.user_data.get('sa_tahrir') == 'telefon':
             super_admin_telefon_ozgartir(user_id, matn.strip())
             await update.message.reply_text("✅ Telefon o'zgartirildi!", reply_markup=sa_menu_kb())
-            context.user_data.pop('sa_amal', None)
-            context.user_data.pop('sa_tahrir', None)
+            context.user_data.pop('sa_amal', None); context.user_data.pop('sa_tahrir', None)
             return SA_MENU
         elif context.user_data.get('sa_tahrir') == 'ism':
             super_admin_ism_ozgartir(user_id, matn.strip())
             await update.message.reply_text("✅ Ism o'zgartirildi!", reply_markup=sa_menu_kb())
-            context.user_data.pop('sa_amal', None)
-            context.user_data.pop('sa_tahrir', None)
+            context.user_data.pop('sa_amal', None); context.user_data.pop('sa_tahrir', None)
             return SA_MENU
     return SA_ADM_LIST
 
@@ -645,31 +696,32 @@ async def sa_soz_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_MENU
     elif matn == "🔑 Kodni o'zgartirish":
         await update.message.reply_text("Yangi Super Admin kodini kiriting:", reply_markup=ReplyKeyboardRemove())
-        context.user_data['soz_amal'] = 'kod'
-        return SA_SOZ_MENU
+        context.user_data['soz_amal'] = 'kod'; return SA_SOZ_MENU
     elif matn == "📱 Telefon o'zgartirish":
         await update.message.reply_text("Yangi telefon raqamini kiriting:", reply_markup=ReplyKeyboardRemove())
-        context.user_data['soz_amal'] = 'telefon'
-        return SA_SOZ_MENU
+        context.user_data['soz_amal'] = 'telefon'; return SA_SOZ_MENU
     elif matn == "👤 Ism o'zgartirish":
         await update.message.reply_text("Yangi ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
-        context.user_data['soz_amal'] = 'ism'
-        return SA_SOZ_MENU
+        context.user_data['soz_amal'] = 'ism'; return SA_SOZ_MENU
+    elif matn == "📞 Murojaat raqami":
+        await update.message.reply_text("Yangi murojaat raqamini kiriting (masalan: 919712222):", reply_markup=ReplyKeyboardRemove())
+        context.user_data['soz_amal'] = 'murojaat'; return SA_SOZ_MENU
     elif context.user_data.get('soz_amal') == 'kod':
         super_admin_kod_ozgartir(matn.strip())
         await update.message.reply_text(f"✅ Kod o'zgartirildi: `{matn.strip()}`", parse_mode='Markdown', reply_markup=sa_menu_kb())
-        context.user_data.pop('soz_amal', None)
-        return SA_MENU
+        context.user_data.pop('soz_amal', None); return SA_MENU
     elif context.user_data.get('soz_amal') == 'telefon':
         super_admin_telefon_ozgartir(user_id, matn.strip())
         await update.message.reply_text("✅ Telefon o'zgartirildi!", reply_markup=sa_menu_kb())
-        context.user_data.pop('soz_amal', None)
-        return SA_MENU
+        context.user_data.pop('soz_amal', None); return SA_MENU
     elif context.user_data.get('soz_amal') == 'ism':
         super_admin_ism_ozgartir(user_id, matn.strip())
         await update.message.reply_text("✅ Ism o'zgartirildi!", reply_markup=sa_menu_kb())
-        context.user_data.pop('soz_amal', None)
-        return SA_MENU
+        context.user_data.pop('soz_amal', None); return SA_MENU
+    elif context.user_data.get('soz_amal') == 'murojaat':
+        set_murojaat_raqam(matn.strip())
+        await update.message.reply_text(f"✅ Murojaat raqami o'zgartirildi: {matn.strip()}", reply_markup=sa_menu_kb())
+        context.user_data.pop('soz_amal', None); return SA_MENU
     return SA_SOZ_MENU
 
 # ==================== ADMIN PANEL ====================
@@ -679,16 +731,11 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     komp_id = context.user_data.get('komp_id')
     if not komp_id:
-        conn = connect()
-        cur = conn.cursor()
+        conn = connect(); cur = conn.cursor()
         cur.execute("SELECT id FROM kompaniyalar WHERE admin_id=%s", (user_id,))
-        row = cur.fetchone()
-        cur.close(); conn.close()
-        if row:
-            komp_id = row[0]
-            context.user_data['komp_id'] = komp_id
+        row = cur.fetchone(); cur.close(); conn.close()
+        if row: komp_id = row[0]; context.user_data['komp_id'] = komp_id
 
-    # Kompaniya faolligini tekshir
     komp = kompaniya_olish(komp_id)
     if not komp or komp[4] != 'faol':
         await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
@@ -746,9 +793,7 @@ async def adm_gps_lok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lon = update.message.location.longitude
         kompaniya_tahrirlash(komp_id, 'gps_lat', lat)
         kompaniya_tahrirlash(komp_id, 'gps_lon', lon)
-        await update.message.reply_text(
-            f"✅ GPS saqlandi: {lat}, {lon}\n\n📏 Ruxsat etilgan radius (metrda) kiriting:",
-            reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(f"✅ GPS saqlandi: {lat}, {lon}\n\n📏 Ruxsat etilgan radius (metrda):", reply_markup=ReplyKeyboardRemove())
         return ADM_GPS_RADIUS
     await update.message.reply_text("❌ Lokatsiya yuboring!")
     return ADM_GPS_LOK
@@ -758,21 +803,18 @@ async def adm_gps_radius(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         radius = int(update.message.text.strip())
         kompaniya_tahrirlash(komp_id, 'gps_radius', radius)
-        await update.message.reply_text(f"✅ GPS to'liq sozlandi!\n📏 Radius: {radius}m", reply_markup=adm_menu_kb())
+        await update.message.reply_text(f"✅ GPS sozlandi! Radius: {radius}m", reply_markup=adm_menu_kb())
         return ADM_MENU
     except:
         await update.message.reply_text("❌ Raqam kiriting:")
         return ADM_GPS_RADIUS
 
-# Admin - xodimlar
 async def adm_xodim_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     komp_id = context.user_data.get('komp_id')
-
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
-
     elif matn == "📋 Ro'yxat":
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
@@ -780,16 +822,12 @@ async def adm_xodim_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             xabar = "👥 *Xodimlar ro'yxati:*\n\n"
             for x in xodimlar:
-                xabar += f"• *{x[1]}* — {x[2]}\n"
-                xabar += f"  📞 {x[3]} | 💰 {x[4]:,.0f} | 🎭 {x[7]}\n"
-                xabar += f"  ⏰ {x[5]}-{x[6]} | 🔐 `{x[8]}`\n\n"
+                xabar += f"• *{x[1]}* — {x[2]}\n  📞 {x[3]} | 💰 {x[4]:,.0f} | 🎭 {x[7]}\n  ⏰ {x[5]}-{x[6]} | 🔐 `{x[8]}`\n\n"
             await update.message.reply_text(xabar, parse_mode='Markdown')
         return ADM_XODIM_LIST
-
     elif matn == "➕ Qo'shish":
         await update.message.reply_text("👤 Xodim ismini kiriting:", reply_markup=ReplyKeyboardRemove())
         return ADM_XODIM_ISM
-
     elif matn in ("✏️ Tahrirlash", "🗑 O'chirish"):
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
@@ -798,24 +836,18 @@ async def adm_xodim_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['xodim_amal'] = 'tahrir' if matn == "✏️ Tahrirlash" else 'ochir'
         tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
         tugmalar.append(["🔙 Orqaga"])
-        await update.message.reply_text("Xodim tanlang:",
-            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return ADM_XODIM_TANLASH
-
     return ADM_XODIM_LIST
 
 async def adm_xodim_ism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['y_ism'] = update.message.text.strip()
     btn = [[KeyboardButton("📱 Telefon yuborish", request_contact=True)]]
-    await update.message.reply_text("📞 Telefon:",
-        reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+    await update.message.reply_text("📞 Telefon:", reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
     return ADM_XODIM_TEL
 
 async def adm_xodim_tel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.contact:
-        context.user_data['y_tel'] = update.message.contact.phone_number
-    else:
-        context.user_data['y_tel'] = update.message.text.strip()
+    context.user_data['y_tel'] = update.message.contact.phone_number if update.message.contact else update.message.text.strip()
     await update.message.reply_text("💼 Lavozim:", reply_markup=ReplyKeyboardRemove())
     return ADM_XODIM_LAV
 
@@ -825,10 +857,8 @@ async def adm_xodim_lav(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADM_XODIM_OYLIK
 
 async def adm_xodim_oylik(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        context.user_data['y_oylik'] = float(update.message.text.strip().replace(',','').replace(' ',''))
-    except:
-        context.user_data['y_oylik'] = 0
+    try: context.user_data['y_oylik'] = float(update.message.text.strip().replace(',','').replace(' ',''))
+    except: context.user_data['y_oylik'] = 0
     await update.message.reply_text("⏰ Ish boshlanish (09:00):")
     return ADM_XODIM_BOSH
 
@@ -839,8 +869,7 @@ async def adm_xodim_bosh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def adm_xodim_tug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['y_tug'] = update.message.text.strip()
-    await update.message.reply_text("🎭 Rol:",
-        reply_markup=ReplyKeyboardMarkup([["xodim", "hr"]], resize_keyboard=True, one_time_keyboard=True))
+    await update.message.reply_text("🎭 Rol:", reply_markup=ReplyKeyboardMarkup([["xodim", "hr"]], resize_keyboard=True, one_time_keyboard=True))
     return ADM_XODIM_ROL
 
 async def adm_xodim_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -892,10 +921,7 @@ async def adm_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
-    maydon_map = {
-        "📝 Ism": "ism", "💼 Lavozim": "lavozim",
-        "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"
-    }
+    maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
         context.user_data['tahrir_qaytish'] = 'adm'
@@ -920,15 +946,12 @@ async def adm_xodim_tahrir_q(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("✅ Saqlandi!", reply_markup=adm_menu_kb())
     return ADM_MENU
 
-# Admin - davomat
 async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     komp_id = context.user_data.get('komp_id')
-
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
-
     elif matn == "📋 Bugungi":
         bugun = hozir().strftime("%Y-%m-%d")
         davomatlar = kompaniya_davomati(komp_id, bugun)
@@ -938,12 +961,10 @@ async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             xabar = f"📋 *Bugungi davomat ({bugun}):*\n\n"
             for d in davomatlar:
                 xabar += f"👤 {d[0]}: {d[2] or '—'} → {d[3] or '—'}"
-                if d[5] and d[5] > 0:
-                    xabar += f" ⚠️{kechikish_format(d[5])}"
+                if d[5] and d[5] > 0: xabar += f" ⚠️{kechikish_format(d[5])}"
                 xabar += "\n"
             await update.message.reply_text(xabar, parse_mode='Markdown')
         return ADM_DAV_MENU
-
     elif matn == "📊 Barchasi":
         davomatlar = kompaniya_davomati(komp_id)
         if not davomatlar:
@@ -952,56 +973,42 @@ async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             xabar = "📊 *Barcha davomat:*\n\n"
             for d in davomatlar[:20]:
                 xabar += f"👤 {d[0]} | 📅 {d[1]}: {d[2] or '—'} → {d[3] or '—'}\n"
-            if len(davomatlar) > 20:
-                xabar += f"\n... va yana {len(davomatlar)-20} ta"
+            if len(davomatlar) > 20: xabar += f"\n... va yana {len(davomatlar)-20} ta"
             await update.message.reply_text(xabar, parse_mode='Markdown')
         return ADM_DAV_MENU
-
     elif matn == "✍️ Kiritish":
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
-            await update.message.reply_text("❌ Xodim yo'q!")
-            return ADM_DAV_MENU
+            await update.message.reply_text("❌ Xodim yo'q!"); return ADM_DAV_MENU
         tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
         tugmalar.append(["🔙 Orqaga"])
-        await update.message.reply_text("Xodim tanlang:",
-            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
-        context.user_data['dav_amal'] = 'kiritish'
-        return ADM_DAV_XODIM
-
+        await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        context.user_data['dav_amal'] = 'kiritish'; return ADM_DAV_XODIM
     elif matn == "✏️ Tahrirlash":
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
-            await update.message.reply_text("❌ Xodim yo'q!")
-            return ADM_DAV_MENU
+            await update.message.reply_text("❌ Xodim yo'q!"); return ADM_DAV_MENU
         tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
         tugmalar.append(["🔙 Orqaga"])
-        await update.message.reply_text("Xodim tanlang:",
-            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
-        context.user_data['dav_amal'] = 'tahrirlash'
-        return ADM_DAV_XODIM
-
+        await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        context.user_data['dav_amal'] = 'tahrirlash'; return ADM_DAV_XODIM
     return ADM_DAV_MENU
 
 async def adm_dav_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     if matn == "🔙 Orqaga":
         await update.message.reply_text("📅 Davomat:", reply_markup=ReplyKeyboardMarkup([
-            ["📋 Bugungi", "📊 Barchasi"],
-            ["✍️ Kiritish", "✏️ Tahrirlash"],
-            ["🔙 Orqaga"]
+            ["📋 Bugungi","📊 Barchasi"],["✍️ Kiritish","✏️ Tahrirlash"],["🔙 Orqaga"]
         ], resize_keyboard=True))
         return ADM_DAV_MENU
     try:
         xodim_id = int(matn.split(".")[0].strip())
         context.user_data['dav_xodim_id'] = xodim_id
-        amal = context.user_data.get('dav_amal')
-        if amal == 'tahrirlash':
+        if context.user_data.get('dav_amal') == 'tahrirlash':
             davomatlar = xodim_davomati(xodim_id)
             if not davomatlar:
-                await update.message.reply_text("❌ Davomat yo'q!")
-                return ADM_DAV_MENU
-            xabar = "📋 *Davomat ro'yxati:*\n\n"
+                await update.message.reply_text("❌ Davomat yo'q!"); return ADM_DAV_MENU
+            xabar = "📋 *Davomat:*\n\n"
             tugmalar = []
             for d in davomatlar[:15]:
                 xabar += f"`{d[0]}` | {d[1]}: {d[2] or '—'}→{d[3] or '—'}\n"
@@ -1012,8 +1019,7 @@ async def adm_dav_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ADM_DAV_TAHRIR_TANLASH
         await update.message.reply_text("📅 Sana kiriting (YYYY-MM-DD):", reply_markup=ReplyKeyboardRemove())
         return ADM_DAV_SANA
-    except:
-        return ADM_DAV_XODIM
+    except: return ADM_DAV_XODIM
 
 async def adm_dav_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['dav_sana'] = update.message.text.strip()
@@ -1027,10 +1033,8 @@ async def adm_dav_keldi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def adm_dav_ketdi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['dav_ketdi'] = update.message.text.strip()
-    await update.message.reply_text("📋 Holat:",
-        reply_markup=ReplyKeyboardMarkup([
-            ["normal", "sababli"], ["kasal", "ta'til"]
-        ], resize_keyboard=True, one_time_keyboard=True))
+    await update.message.reply_text("📋 Holat:", reply_markup=ReplyKeyboardMarkup([
+        ["normal","sababli"],["kasal","ta'til"]], resize_keyboard=True, one_time_keyboard=True))
     return ADM_DAV_HOLAT
 
 async def adm_dav_holat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1044,10 +1048,9 @@ async def adm_dav_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xodim_id = context.user_data['dav_xodim_id']
     komp_id = context.user_data['komp_id']
     xodim = xodim_olish(xodim_id)
-    natija = manual_davomat(xodim_id, komp_id,
-        context.user_data['dav_sana'], context.user_data['dav_keldi'],
-        context.user_data['dav_ketdi'], context.user_data['dav_holat'],
-        izoh, xodim[1] if xodim else 'Admin', update.effective_user.id)
+    natija = manual_davomat(xodim_id, komp_id, context.user_data['dav_sana'],
+        context.user_data['dav_keldi'], context.user_data['dav_ketdi'],
+        context.user_data['dav_holat'], izoh, xodim[1] if xodim else 'Admin', update.effective_user.id)
     await update.message.reply_text(natija, reply_markup=adm_menu_kb())
     return ADM_MENU
 
@@ -1059,27 +1062,18 @@ async def adm_dav_tahrir_tanlash(update: Update, context: ContextTypes.DEFAULT_T
     try:
         dav_id = int(matn.split("ID:")[1].split("|")[0].strip())
         context.user_data['dav_id'] = dav_id
-        await update.message.reply_text("Nimani tahrirlash?",
-            reply_markup=ReplyKeyboardMarkup([
-                ["⏰ Keldi vaqti", "⏰ Ketdi vaqti"],
-                ["📋 Holat", "📝 Izoh"],
-                ["🔙 Orqaga"]
-            ], resize_keyboard=True))
+        await update.message.reply_text("Nimani tahrirlash?", reply_markup=ReplyKeyboardMarkup([
+            ["⏰ Keldi vaqti","⏰ Ketdi vaqti"],["📋 Holat","📝 Izoh"],["🔙 Orqaga"]
+        ], resize_keyboard=True))
         return ADM_DAV_TAHRIR_AMAL
-    except:
-        return ADM_DAV_TAHRIR_TANLASH
+    except: return ADM_DAV_TAHRIR_TANLASH
 
 async def adm_dav_tahrir_amal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
-    maydon_map = {
-        "⏰ Keldi vaqti": "keldi",
-        "⏰ Ketdi vaqti": "ketdi",
-        "📋 Holat": "holat",
-        "📝 Izoh": "izoh"
-    }
+    maydon_map = {"⏰ Keldi vaqti":"keldi","⏰ Ketdi vaqti":"ketdi","📋 Holat":"holat","📝 Izoh":"izoh"}
     if matn in maydon_map:
         context.user_data['dav_tahrir_maydon'] = maydon_map[matn]
         await update.message.reply_text(f"Yangi {matn}:", reply_markup=ReplyKeyboardRemove())
@@ -1087,10 +1081,7 @@ async def adm_dav_tahrir_amal(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ADM_DAV_TAHRIR_AMAL
 
 async def adm_dav_tahrir_q(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    qiymat = update.message.text.strip()
-    dav_id = context.user_data.get('dav_id')
-    maydon = context.user_data.get('dav_tahrir_maydon')
-    davomat_tahrirlash(dav_id, maydon, qiymat)
+    davomat_tahrirlash(context.user_data.get('dav_id'), context.user_data.get('dav_tahrir_maydon'), update.message.text.strip())
     await update.message.reply_text("✅ Davomat yangilandi!", reply_markup=adm_menu_kb())
     return ADM_MENU
 
@@ -1099,18 +1090,14 @@ async def adm_dav_tahrir_q(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     komp_id = context.user_data.get('komp_id')
-
     if matn == "✍️ Manual davomat":
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
-            await update.message.reply_text("❌ Xodim yo'q!")
-            return HR_MENU
+            await update.message.reply_text("❌ Xodim yo'q!"); return HR_MENU
         tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
         tugmalar.append(["🔙 Orqaga"])
-        await update.message.reply_text("Xodim tanlang:",
-            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return HR_MAN_XODIM
-
     elif matn == "📊 Hisobot":
         await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
         try:
@@ -1122,11 +1109,9 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"❌ Xatolik: {e}")
         return HR_MENU
-
     elif matn == "🏠 Bosh menu":
         await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu_kb())
         return HR_MENU
-
     return HR_MENU
 
 async def hr_man_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1139,8 +1124,7 @@ async def hr_man_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['dav_xodim_id'] = xodim_id
         await update.message.reply_text("📅 Sana (YYYY-MM-DD):", reply_markup=ReplyKeyboardRemove())
         return HR_MAN_SANA
-    except:
-        return HR_MAN_XODIM
+    except: return HR_MAN_XODIM
 
 async def hr_man_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['dav_sana'] = update.message.text.strip()
@@ -1154,10 +1138,8 @@ async def hr_man_keldi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def hr_man_ketdi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['dav_ketdi'] = update.message.text.strip()
-    await update.message.reply_text("📋 Holat:",
-        reply_markup=ReplyKeyboardMarkup([
-            ["normal", "sababli"], ["kasal", "ta'til"]
-        ], resize_keyboard=True, one_time_keyboard=True))
+    await update.message.reply_text("📋 Holat:", reply_markup=ReplyKeyboardMarkup([
+        ["normal","sababli"],["kasal","ta'til"]], resize_keyboard=True, one_time_keyboard=True))
     return HR_MAN_HOLAT
 
 async def hr_man_holat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1171,10 +1153,9 @@ async def hr_man_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xodim_id = context.user_data['dav_xodim_id']
     komp_id = context.user_data['komp_id']
     xodim = xodim_olish(xodim_id)
-    natija = manual_davomat(xodim_id, komp_id,
-        context.user_data['dav_sana'], context.user_data['dav_keldi'],
-        context.user_data['dav_ketdi'], context.user_data['dav_holat'],
-        izoh, xodim[1] if xodim else 'HR', update.effective_user.id)
+    natija = manual_davomat(xodim_id, komp_id, context.user_data['dav_sana'],
+        context.user_data['dav_keldi'], context.user_data['dav_ketdi'],
+        context.user_data['dav_holat'], izoh, xodim[1] if xodim else 'HR', update.effective_user.id)
     await update.message.reply_text(natija, reply_markup=hr_menu_kb())
     return HR_MENU
 
@@ -1184,33 +1165,51 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     xodim_id = context.user_data.get('xodim_id')
     komp_id = context.user_data.get('komp_id')
-
-    # Kompaniya faolligini tekshir
     komp = kompaniya_olish(komp_id)
     if not komp or komp[4] != 'faol':
         await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
         return ConversationHandler.END
 
     if matn == "✅ Keldim":
-        if komp[9]:  # GPS aktiv
-            btn = [[KeyboardButton("📍 GPS yuborish", request_location=True)]]
-            await update.message.reply_text("📍 Joylashuvingizni yuboring:",
+        if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
+            live_matn = ""
+            if komp[14]:
+                live_matn = "\n\n📡 *Live lokatsiya* tanlasangiz 8 soat kuzatiladi!"
+            btn = [[KeyboardButton("📍 Lokatsiya yuborish", request_location=True)]]
+            await update.message.reply_text(
+                f"📍 Joylashuvingizni yuboring:{live_matn}",
+                parse_mode='Markdown',
                 reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
             return XOD_KELDI_GPS
         else:
             natija = keldi_belgilash(xodim_id, komp_id)
-            await update.message.reply_text(natija, reply_markup=xod_menu_kb())
+            if natija == "already":
+                await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
+            else:
+                _, vaqt, kechikish = natija.split("|")
+                msg = f"✅ Keldi vaqti: {vaqt}"
+                if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+                await update.message.reply_text(msg, reply_markup=xod_menu_kb())
+                await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi')
             return XOD_MENU
 
     elif matn == "🚪 Ketdim":
-        if komp[9]:  # GPS aktiv
-            btn = [[KeyboardButton("📍 GPS yuborish", request_location=True)]]
+        if komp[9] or komp[14]:
+            btn = [[KeyboardButton("📍 Lokatsiya yuborish", request_location=True)]]
             await update.message.reply_text("📍 Joylashuvingizni yuboring:",
                 reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
             return XOD_KETDI_GPS
         else:
             natija = ketdi_belgilash(xodim_id, komp_id)
-            await update.message.reply_text(natija, reply_markup=xod_menu_kb())
+            if natija == "nokeldi":
+                await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
+            else:
+                _, vaqt, ish_soat, ish_tugash = natija.split("|")
+                xodim = xodim_olish(xodim_id)
+                xabar = ketdi_xabar_matni(xodim[1] if xodim else '', ish_tugash, vaqt, float(ish_soat))
+                await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=xod_menu_kb())
+                await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi')
+                live_lokatsiya_ochirish(xodim_id)
             return XOD_MENU
 
     elif matn == "📋 Davomatim":
@@ -1222,10 +1221,32 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for d in davomatlar[:15]:
                 holat_e = {"normal":"✅","sababli":"📝","kasal":"🤒","ta'til":"🏖"}.get(d[6],"❓")
                 xabar += f"{holat_e} {d[1]}: {d[2] or '—'} → {d[3] or '—'}"
-                if d[5] and d[5] > 0:
-                    xabar += f" ⚠️{kechikish_format(d[5])}"
+                if d[5] and d[5] > 0: xabar += f" ⚠️{kechikish_format(d[5])}"
                 xabar += "\n"
             await update.message.reply_text(xabar, parse_mode='Markdown')
+        return XOD_MENU
+
+    elif matn == "📊 Statistikam":
+        oy = hozir().strftime("%Y-%m")
+        stat = xodim_oy_statistika(xodim_id, oy)
+        xodim = xodim_olish(xodim_id)
+        if stat:
+            kun, jami_soat, kechikish_kun, jami_kechikish, sababli, sababsiz = stat
+            s = int(float(jami_soat)); d = int((float(jami_soat) - s) * 60)
+            xabar = (f"📊 *{oy} oy statistikasi*\n"
+                    f"👤 {xodim[1] if xodim else ''}\n\n"
+                    f"📅 Kelgan kunlar: {kun}\n"
+                    f"⏱ Jami ish vaqti: {s} soat {d} daqiqa\n"
+                    f"⚠️ Kechikkan kunlar: {kechikish_kun}\n"
+                    f"🕐 Jami kechikish: {kechikish_format(jami_kechikish)}\n"
+                    f"📝 Sababli: {sababli} kun\n"
+                    f"❌ Sababsiz: {sababsiz} kun")
+            # Streak tekshirish
+            if kechikish_kun == 0 and kun > 0:
+                xabar += f"\n\n🏅 *Bu oy 0 kechikish!* Ajoyib!"
+            await update.message.reply_text(xabar, parse_mode='Markdown')
+        else:
+            await update.message.reply_text("📊 Bu oy ma'lumot yo'q.")
         return XOD_MENU
 
     elif matn == "📝 Sababli so'rov":
@@ -1244,7 +1265,9 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_KELDI_GPS
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
-    lat, lon = update.message.location.latitude, update.message.location.longitude
+    lat = update.message.location.latitude
+    lon = update.message.location.longitude
+    live_period = getattr(update.message.location, 'live_period', None)
     komp_lat, komp_lon, radius = get_gps(komp_id)
     m = masofa_hisob(lat, lon, komp_lat, komp_lon)
     if m > radius:
@@ -1253,24 +1276,35 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=xod_menu_kb())
         return XOD_MENU
     komp = kompaniya_olish(komp_id)
+    # Live lokatsiyani saqlash
+    if live_period and komp[14]:
+        live_lokatsiya_saqlash(xodim_id, komp_id, lat, lon)
     natija = keldi_belgilash(xodim_id, komp_id)
+    if natija == "already":
+        await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
+        return XOD_MENU
+    _, vaqt, kechikish = natija.split("|")
+    msg = f"✅ Keldi vaqti: {vaqt}\n📏 {m}m"
+    if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+    if live_period and komp[14]: msg += "\n📡 Live lokatsiya faol"
     if komp and komp[10]:  # Selfie aktiv
-        await update.message.reply_text(f"{natija}\n📏 {m}m\n\n📸 Selfie yuboring:", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
         return XOD_KELDI_RASM
     await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', m)
-    await update.message.reply_text(f"{natija}\n📏 {m}m", reply_markup=xod_menu_kb())
+    await update.message.reply_text(msg, reply_markup=xod_menu_kb())
     return XOD_MENU
 
 async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Selfie yoki video yuboring!")
+        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!")
         return XOD_KELDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
-    rasm_id = update.message.photo[-1].file_id if update.message.photo else update.message.video_note.file_id
+    is_photo = update.message.photo is not None
+    rasm_id = update.message.photo[-1].file_id if is_photo else update.message.video_note.file_id
     keldi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
-    await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, rasm_id, update.message.photo is not None)
+    await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, rasm_id, is_photo)
     await update.message.reply_text("✅ Davomat qabul qilindi!", reply_markup=xod_menu_kb())
     return XOD_MENU
 
@@ -1280,7 +1314,8 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_KETDI_GPS
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
-    lat, lon = update.message.location.latitude, update.message.location.longitude
+    lat = update.message.location.latitude
+    lon = update.message.location.longitude
     komp_lat, komp_lon, radius = get_gps(komp_id)
     m = masofa_hisob(lat, lon, komp_lat, komp_lon)
     if m > radius:
@@ -1290,23 +1325,32 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_MENU
     komp = kompaniya_olish(komp_id)
     natija = ketdi_belgilash(xodim_id, komp_id)
+    if natija == "nokeldi":
+        await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
+        return XOD_MENU
+    _, vaqt, ish_soat, ish_tugash = natija.split("|")
+    xodim = xodim_olish(xodim_id)
+    xabar = ketdi_xabar_matni(xodim[1] if xodim else '', ish_tugash, vaqt, float(ish_soat))
+    xabar += f"\n📏 {m}m"
+    live_lokatsiya_ochirish(xodim_id)
     if komp and komp[10]:
-        await update.message.reply_text(f"{natija}\n📏 {m}m\n\n📸 Selfie yuboring:", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(f"{xabar}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
         return XOD_KETDI_RASM
     await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', m)
-    await update.message.reply_text(f"{natija}\n📏 {m}m", reply_markup=xod_menu_kb())
+    await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=xod_menu_kb())
     return XOD_MENU
 
 async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Selfie yoki video yuboring!")
+        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!")
         return XOD_KETDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
-    rasm_id = update.message.photo[-1].file_id if update.message.photo else update.message.video_note.file_id
+    is_photo = update.message.photo is not None
+    rasm_id = update.message.photo[-1].file_id if is_photo else update.message.video_note.file_id
     ketdi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
-    await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, rasm_id, update.message.photo is not None)
+    await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, rasm_id, is_photo)
     await update.message.reply_text("✅ Chiqish belgilandi!", reply_markup=xod_menu_kb())
     return XOD_MENU
 
@@ -1314,32 +1358,34 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
     xodim = xodim_olish(xodim_id)
     if not xodim or not komp: return
     vaqt = hozir().strftime("%H:%M")
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT kechikish FROM davomat WHERE xodim_id=%s AND sana=%s",
                 (xodim_id, hozir().strftime("%Y-%m-%d")))
-    dav = cur.fetchone()
-    cur.close(); conn.close()
+    dav = cur.fetchone(); cur.close(); conn.close()
     kechikish = dav[0] if dav else 0
     emoji = "📨" if tur == 'keldi' else "🚪"
     xabar = (f"{emoji} *{'KELDI' if tur=='keldi' else 'KETDI'} XABARI*\n"
              f"━━━━━━━━━━━━━━━\n"
              f"🏢 {komp[1]}\n👤 {xodim[1]}\n💼 {xodim[3]}\n⏰ {vaqt}\n")
-    if kechikish > 0:
-        xabar += f"⚠️ Kechikish: {kechikish_format(kechikish)}\n"
-    if masofa > 0:
-        xabar += f"📏 Masofa: {masofa}m\n"
+    if kechikish > 0: xabar += f"⚠️ Kechikish: {kechikish_format(kechikish)}\n"
+    if masofa > 0: xabar += f"📏 Masofa: {masofa}m\n"
     xabar += "━━━━━━━━━━━━━━━"
     admin_id = komp[3]
     hr_list = hr_idlari(komp_id)
-    for aid in ([admin_id] if admin_id else []) + hr_list:
+    sa_list = barcha_super_admin_idlar()
+    # Takrorlanmasin
+    barcha = list(set(([admin_id] if admin_id else []) + hr_list + sa_list))
+    for aid in barcha:
         try:
             await context.bot.send_message(aid, xabar, parse_mode='Markdown')
             if rasm_id:
                 if foto:
                     await context.bot.send_photo(aid, rasm_id)
                 else:
-                    await context.bot.send_video_note(aid, rasm_id)
+                    try:
+                        await context.bot.send_video_note(aid, rasm_id)
+                    except:
+                        await context.bot.send_video(aid, rasm_id)
         except: pass
 
 async def xod_sabab_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1363,7 +1409,7 @@ async def xod_sabab_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]])
     admin_id = komp[3] if komp else None
     hr_list = hr_idlari(komp_id)
-    for aid in ([admin_id] if admin_id else []) + hr_list:
+    for aid in (([admin_id] if admin_id else []) + hr_list):
         try:
             await context.bot.send_message(aid, xabar, parse_mode='Markdown', reply_markup=keyboard)
         except: pass
@@ -1375,13 +1421,11 @@ async def sorov_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data.split('_')
     amal, sorov_id, xodim_id, sana = data[1], int(data[2]), int(data[3]), data[4]
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT sabab FROM sababli_sorovlar WHERE id=%s", (sorov_id,))
     row = cur.fetchone()
-    cur.execute("SELECT ism, telegram_id FROM xodimlar WHERE id=%s", (xodim_id,))
-    xodim = cur.fetchone()
-    cur.close(); conn.close()
+    cur.execute("SELECT ism,telegram_id FROM xodimlar WHERE id=%s", (xodim_id,))
+    xodim = cur.fetchone(); cur.close(); conn.close()
     sabab = row[0] if row else ''
     holat = 'tasdiqlandi' if amal == 'ha' else 'rad_etildi'
     sababli_sorov_yangilash(sorov_id, holat, xodim_id, sana, sabab)
@@ -1393,15 +1437,114 @@ async def sorov_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{emoji} Hurmatli {xodim[0]},\nSababli so'rovingiz {holat}!\n📅 {sana}")
         except: pass
 
+# ==================== LIVE LOKATSIYA UPDATE ====================
+
+async def live_location_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Edited message orqali live lokatsiya yangilanishi"""
+    msg = update.edited_message
+    if not msg or not msg.location: return
+    user_id = msg.from_user.id
+    xodim = telegram_id_orqali_xodim(user_id)
+    if not xodim: return
+    xodim_id = xodim[0]
+    komp_id = xodim[3]
+    komp = kompaniya_olish(komp_id)
+    if not komp or not komp[14]: return  # live_gps_aktiv
+    live_lokatsiya_saqlash(xodim_id, komp_id, msg.location.latitude, msg.location.longitude)
+
+# ==================== JOB HANDLERS ====================
+
+async def tekshiruv_job(context: ContextTypes.DEFAULT_TYPE):
+    """Har 30 daqiqada xodimlar joylashuvini tekshirish"""
+    xodimlar = barcha_live_xodimlar()
+    for x in xodimlar:
+        xodim_id, komp_id, lat, lon, ism, telegram_id, k_lat, k_lon, k_radius, admin_id, komp_nomi = x
+        if not lat or not lon: continue
+        masofa = masofa_hisob(lat, lon, k_lat, k_lon)
+        if masofa > k_radius:
+            vaqt = hozir().strftime("%H:%M")
+            xabar = (f"⚠️ *XODIM ISH JOYIDA YO'Q!*\n\n"
+                    f"🏢 {komp_nomi}\n👤 {ism}\n"
+                    f"📏 Masofa: {masofa}m (ruxsat: {k_radius}m)\n"
+                    f"⏰ Vaqt: {vaqt}")
+            hr_list = hr_idlari(komp_id)
+            sa_list = barcha_super_admin_idlar()
+            for aid in list(set(([admin_id] if admin_id else []) + hr_list + sa_list)):
+                try:
+                    await context.bot.send_message(aid, xabar, parse_mode='Markdown')
+                except: pass
+
+async def haftalik_hisobot_job(context: ContextTypes.DEFAULT_TYPE):
+    """Juma kuni haftalik hisobot"""
+    kompaniyalar = haftalik_davomat_kompaniyalar()
+    for k in kompaniyalar:
+        komp_id, nomi, admin_id = k
+        stat = kompaniya_haftalik_stat(komp_id)
+        if not stat: continue
+        kelgan, kun, jami_soat, ort_kechikish = stat
+        s = int(float(jami_soat)); d = int((float(jami_soat) - s) * 60)
+        xabar = (f"📊 *HAFTALIK HISOBOT*\n🏢 {nomi}\n\n"
+                f"👥 Bu hafta {kelgan} xodim keldi\n"
+                f"📅 Jami {kun} ish kuni\n"
+                f"⏱ Jami ish vaqti: {s} soat {d} daqiqa\n"
+                f"⚠️ O'rtacha kechikish: {kechikish_format(ort_kechikish)}")
+        # Reyting top-3
+        reyting = kompaniya_reyting(komp_id)
+        if reyting:
+            xabar += "\n\n🏆 *Hafta reytingi (Top 3):*\n"
+            for i, r in enumerate(reyting[:3], 1):
+                medal = ["🥇","🥈","🥉"][i-1]
+                xabar += f"{medal} {r[0]} — {kechikish_format(r[4])} kechikish\n"
+        hr_list = hr_idlari(komp_id)
+        sa_list = barcha_super_admin_idlar()
+        for aid in list(set(([admin_id] if admin_id else []) + hr_list + sa_list)):
+            try:
+                await context.bot.send_message(aid, xabar, parse_mode='Markdown')
+            except: pass
+
+async def eslatma_job(context: ContextTypes.DEFAULT_TYPE):
+    """Har daqiqa ish boshlanishidan 30 daqiqa oldin eslatma"""
+    hozir_v = hozir()
+    xodimlar = barcha_xodimlar_eslatma()
+    for x in xodimlar:
+        xodim_id, telegram_id, ism, ish_bosh, tugilgan_kun, komp_id = x
+        if not telegram_id: continue
+        # Tug'ilgan kun tabrik
+        if tugilgan_kun:
+            bugun = hozir_v.strftime("%m-%d")
+            try:
+                if tugilgan_kun[5:] == bugun and hozir_v.hour == 9 and hozir_v.minute == 0:
+                    await context.bot.send_message(telegram_id,
+                        f"🎂 *Tug'ilgan kuningiz muborak, {ism}!*\n\nSizga sog'lik, baxt va omad tilaymiz! 🎉",
+                        parse_mode='Markdown')
+            except: pass
+        # Ish boshlanish eslatmasi
+        try:
+            ish_dt = datetime.strptime(ish_bosh, "%H:%M")
+            farq_daqiqa = (ish_dt.hour * 60 + ish_dt.minute) - (hozir_v.hour * 60 + hozir_v.minute)
+            if farq_daqiqa == 30:
+                await context.bot.send_message(telegram_id,
+                    f"⏰ *Eslatma!*\n\n{ism}, ish boshlanishiga *30 daqiqa* qoldi!\nIsh vaqti: {ish_bosh} 🏃",
+                    parse_mode='Markdown')
+        except: pass
+
+# ==================== XATO ====================
+
 async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Xato: {context.error}", exc_info=context.error)
+
+# ==================== MAIN ====================
 
 def main():
     create_tables()
     print("Baza tayyor!")
     app = Application.builder().token(BOT_TOKEN).build()
+
     conv = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[
+            CommandHandler('start', start),
+            MessageHandler(filters.TEXT & filters.Regex("^▶️ Botni ishga tushirish$"), boshlash_handler),
+        ],
         states={
             TELEFON: [MessageHandler(filters.CONTACT | filters.TEXT, telefon_qabul)],
             KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, kod_tekshir)],
@@ -1414,7 +1557,7 @@ def main():
             SA_KOMP_AMAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_amal)],
             SA_KOMP_TAHRIR_QIYMAT: [
                 MessageHandler(filters.LOCATION, sa_komp_tahrir_qiymat),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tahrir_qiymat)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tahrir_qiymat),
             ],
             SA_FUNKSIYA: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_funksiya)],
             SA_SOZ_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_soz_menu)],
@@ -1424,6 +1567,7 @@ def main():
             SA_KOMP_XODIM_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_tanlash)],
             SA_KOMP_XODIM_AMAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_amal)],
             SA_KOMP_XODIM_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_tahrir)],
+            SA_KOMP_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_delete_kod)],
             ADM_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_menu)],
             ADM_XODIM_LIST: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_list)],
             ADM_XODIM_ISM: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_ism)],
@@ -1438,7 +1582,7 @@ def main():
             ADM_XODIM_TAHRIR_Q: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir_q)],
             ADM_GPS_LOK: [
                 MessageHandler(filters.LOCATION, adm_gps_lok),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_lok)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_lok),
             ],
             ADM_GPS_RADIUS: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_radius)],
             ADM_DAV_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_menu)],
@@ -1469,9 +1613,24 @@ def main():
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
     )
+
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(sorov_callback, pattern=r'^sorov_'))
+    # Live lokatsiya yangilanishi (edited_message)
+    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
     app.add_error_handler(xato)
+
+    # Job Queue — schedulerlar
+    jq = app.job_queue
+    # Har 30 daqiqada joylashuv tekshiruvi
+    jq.run_repeating(tekshiruv_job, interval=1800, first=60)
+    # Har daqiqa eslatma (ish boshlanishi va tug'ilgan kun)
+    jq.run_repeating(eslatma_job, interval=60, first=30)
+    # Juma kuni soat 18:00 da haftalik hisobot
+    jq.run_daily(haftalik_hisobot_job,
+                 time=dtime(hour=18, minute=0, second=0, tzinfo=TASHKENT),
+                 days=(4,))  # 4 = Juma
+
     print("Bot ishlamoqda...")
     app.run_polling(drop_pending_updates=True)
 
