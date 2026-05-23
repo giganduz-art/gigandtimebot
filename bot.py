@@ -109,11 +109,13 @@ def xod_menu_kb():
         ["📝 Sababli so'rov", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
-def xod_wifi_kb():
-    return ReplyKeyboardMarkup([
-        ["📡 WiFi ulangan", "📍 Lokatsiya yuborish"],
-        ["🏠 Orqaga"]
-    ], resize_keyboard=True)
+def xod_wifi_kb(komp_id=None, amal='keldim'):
+    """WiFi prompt inline keyboard"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📡 WiFi ulangan", callback_data=f"wifi_{amal}_{komp_id}"),
+         InlineKeyboardButton("📍 GPS kerak", callback_data=f"gps_{amal}_{komp_id}")],
+        [InlineKeyboardButton("🏠 Orqaga", callback_data="xod_menu")]
+    ])
 
 
 # ==================== START ====================
@@ -1408,7 +1410,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📡 Ulangan → avtamatik Keldim\n"
                 f"📍 Ulanmagan → GPS kerak",
                 parse_mode='Markdown',
-                reply_markup=xod_wifi_kb())
+                reply_markup=xod_wifi_kb(komp_id, 'keldim'))
             context.user_data['wifi_waiting'] = True
             return XOD_MENU
 
@@ -1457,7 +1459,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📡 Ulangan → avtamatik Ketdim\n"
                 f"📍 Ulanmagan → GPS kerak",
                 parse_mode='Markdown',
-                reply_markup=xod_wifi_kb())
+                reply_markup=xod_wifi_kb(komp_id, 'ketdi'))
             context.user_data['wifi_waiting_ketdi'] = True
             return XOD_MENU
 
@@ -2033,6 +2035,80 @@ async def eslatma_job(context: ContextTypes.DEFAULT_TYPE):
                     parse_mode='Markdown')
         except: pass
 
+# ==================== WIFI CALLBACK ====================
+
+async def wifi_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """WiFi button callback handler"""
+    query = update.callback_query
+    data = query.data
+
+    # Parse callback data: wifi_keldim_komp_id or wifi_ketdi_komp_id
+    parts = data.split("_")
+    if len(parts) < 3:
+        return
+
+    amal = parts[1]  # 'keldim' or 'ketdi'
+    komp_id = int(parts[2])
+
+    xodim_id = context.user_data.get('xodim_id')
+    if not xodim_id:
+        await query.answer("❌ Sessiya tugadi, qayta /start bosing", show_alert=True)
+        return
+
+    komp = kompaniya_olish(komp_id)
+
+    try:
+        await query.answer()  # No notification
+
+        if amal == 'keldim':
+            natija = keldi_belgilash(xodim_id, komp_id)
+            if natija == "already":
+                await query.edit_message_text("⚠️ Bugun allaqachon belgilangan!")
+                return
+
+            _, vaqt, kechikish = natija.split("|")
+            msg = f"✅ Keldi vaqti: {vaqt}"
+            if int(kechikish) > 0:
+                msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+            msg += "\n\n📡 WiFi orqali qabul qilindi!"
+
+            # AUDIT LOG
+            user_id = update.effective_user.id
+            user_ism = update.effective_user.first_name or 'Xodim'
+            audit_log_qoshish(komp_id, 'KELDI', f"WiFi orqali: {vaqt}", xodim_id, None, None, user_id, user_ism)
+
+            context.user_data['wifi_waiting'] = False
+
+        elif amal == 'ketdi':
+            natija = ketdi_belgilash(xodim_id, komp_id)
+            if natija == "nokeldi":
+                await query.edit_message_text("❌ Avval keldi belgilanmagan!")
+                return
+
+            _, vaqt, ish_soat, ish_tugash = natija.split("|")
+            s = int(float(ish_soat))
+            d = int((float(ish_soat) - s) * 60)
+            msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa\n\n📡 WiFi orqali qabul qilindi!"
+
+            # AUDIT LOG
+            user_id = update.effective_user.id
+            user_ism = update.effective_user.first_name or 'Xodim'
+            audit_log_qoshish(komp_id, 'KETDI', f"WiFi orqali: {vaqt}", xodim_id, None, None, user_id, user_ism)
+
+            context.user_data['wifi_waiting_ketdi'] = False
+            live_lokatsiya_ochirish(xodim_id)
+
+        await query.edit_message_text(msg)
+
+        # Admin notification (async, don't await)
+        try:
+            await _admin_xabar(context, xodim_id, komp_id, komp, amal, 0, None, True)
+        except:
+            pass
+
+    except Exception as e:
+        await query.answer(f"❌ Xatolik: {e}", show_alert=True)
+
 # ==================== XATO ====================
 
 async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2127,6 +2203,7 @@ def main():
 
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(sorov_callback, pattern=r'^sorov_'))
+    app.add_handler(CallbackQueryHandler(wifi_callback, pattern=r'^wifi_'))
     # Live lokatsiya yangilanishi (edited_message)
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
     app.add_error_handler(xato)
