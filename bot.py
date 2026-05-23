@@ -1319,12 +1319,12 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "✅ Keldim":
         if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
             if komp[14]:  # Live GPS REQUIRED
-                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (8 soat)", request_location=True)]]
+                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
                 await update.message.reply_text(
                     "🚨 *LIVE LOKATSIYA KERAK!*\n\n"
                     "1️⃣ Lokatsiya tugmasini bosing\n"
                     "2️⃣ Telegram-da '📍 Real vaqt lokatsiyasi' ni tanlang\n"
-                    "3️⃣ '8 soat' turish vaqtini tanlang\n\n"
+                    "3️⃣ Doimiy ishlaydi (ketdi belgilagunga qadar)\n\n"
                     "⚠️ Oddiy lokatsiya QABUL QILINMAYDI!",
                     parse_mode='Markdown',
                     reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
@@ -1355,12 +1355,12 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matn == "🚪 Ketdim":
         if komp[9] or komp[14]:
             if komp[14]:  # Live GPS REQUIRED
-                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (8 soat)", request_location=True)]]
+                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
                 await update.message.reply_text(
                     "🚨 *LIVE LOKATSIYA KERAK!*\n\n"
                     "1️⃣ Lokatsiya tugmasini bosing\n"
                     "2️⃣ Telegram-da '📍 Real vaqt lokatsiyasi' ni tanlang\n"
-                    "3️⃣ '8 soat' turish vaqtini tanlang\n\n"
+                    "3️⃣ Doimiy ishlaydi (ketdi belgilagunga qadar)\n\n"
                     "⚠️ Oddiy lokatsiya QABUL QILINMAYDI!",
                     parse_mode='Markdown',
                     reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
@@ -1810,13 +1810,18 @@ async def tekshiruv_job(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Tekshiruv job xatosi: {e}")
 
 async def live_location_timeout_job(context: ContextTypes.DEFAULT_TYPE):
-    """8 soat o'tgan live lokatsiyalarni o'chirish"""
+    """Ketdi belgilangan xodimlarning live lokatsiyalarini o'chirish"""
     conn = connect(); cur = conn.cursor()
-    vaqt_limit = (hozir() - timedelta(hours=8)).strftime("%H:%M:%S")
     sana = hozir().strftime("%Y-%m-%d")
+    # Ketdi belgilangan xodimlarni topib, lokatsiyalarini o'chir
     cur.execute('''UPDATE live_lokatsiyalar SET faol=FALSE
-                  WHERE faol=TRUE AND vaqt < %s''', (vaqt_limit,))
+                  WHERE faol=TRUE AND xodim_id IN (
+                    SELECT id FROM davomat d
+                    JOIN xodimlar x ON d.xodim_id=x.id
+                    WHERE d.sana=%s AND d.ketdi IS NOT NULL
+                  )''', (sana,))
     conn.commit(); cur.close(); conn.close()
+    logger.info(f"✅ Live lokatsiyalar o'chirildi (ketdi belgilangan xodimlar)")
 
 async def haftalik_hisobot_job(context: ContextTypes.DEFAULT_TYPE):
     """Juma kuni haftalik hisobot"""
