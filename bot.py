@@ -429,7 +429,8 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardMarkup([
                 ["📝 Nomi", "📞 Admin telefon"],
                 ["🔑 Admin kodi", "📍 GPS"],
-                ["📏 Radius", "🔙 Orqaga"]
+                ["📏 Radius", "📡 WiFi nomi"],
+                ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_AMAL
 
@@ -518,6 +519,7 @@ async def sa_komp_amal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     maydon_map = {
         "📝 Nomi": "nomi", "📞 Admin telefon": "admin_telefon",
         "🔑 Admin kodi": "admin_kod", "📏 Radius": "gps_radius",
+        "📡 WiFi nomi": "wifi_ssid",
     }
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
