@@ -442,13 +442,14 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱ 30-daqiqa tekshiruv: {'✅' if komp[15] else '❌'}\n"
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
-            f"📷 Hikvision: {'✅' if komp[12] else '❌'}",
+            f"📷 Hikvision: {'✅' if komp[12] else '❌'}\n"
+            f"📡 WiFi aniqlash: {'✅' if komp[16] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📍 GPS", "📡 GPS Live"],
                 ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
-                ["🔙 Orqaga"]
+                ["📡 WiFi aniqlash", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
 
@@ -566,6 +567,7 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤳 Selfie":            ("selfie_aktiv", komp[10]),
         "👤 Face ID":           ("face_id_aktiv", komp[11]),
         "📷 Hikvision":         ("hikvision_aktiv", komp[12]),
+        "📡 WiFi aniqlash":     ("wifi_aktiv", komp[16]),
     }
     if matn in funksiya_map:
         maydon, hozirgi = funksiya_map[matn]
@@ -578,13 +580,14 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏱ 30-daqiqa tekshiruv: {'✅' if komp[15] else '❌'}\n"
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
-            f"📷 Hikvision: {'✅' if komp[12] else '❌'}",
+            f"📷 Hikvision: {'✅' if komp[12] else '❌'}\n"
+            f"📡 WiFi aniqlash: {'✅' if komp[16] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📍 GPS", "📡 GPS Live"],
                 ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
-                ["🔙 Orqaga"]
+                ["📡 WiFi aniqlash", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
     return SA_FUNKSIYA
