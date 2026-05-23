@@ -68,13 +68,15 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     ADM_DAV_MENU, ADM_DAV_XODIM, ADM_DAV_SANA, ADM_DAV_KELDI,
     ADM_DAV_KETDI, ADM_DAV_HOLAT, ADM_DAV_IZOH,
     ADM_DAV_TAHRIR_TANLASH, ADM_DAV_TAHRIR_AMAL, ADM_DAV_TAHRIR_Q,
+    ADM_HISOBOT_SANA, ADM_HISOBOT_KUN,
     HR_MENU, HR_MAN_XODIM, HR_MAN_SANA, HR_MAN_KELDI,
     HR_MAN_KETDI, HR_MAN_HOLAT, HR_MAN_IZOH,
     XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM,
     XOD_KETDI_GPS, XOD_KETDI_RASM,
     XOD_SABAB_SANA, XOD_SABAB_MATN,
     SA_KOMP_DELETE_KOD,
-) = range(58)
+    SA_HISOBOT_SANA, SA_HISOBOT_KUN,
+) = range(62)
 
 # ==================== MENYULAR ====================
 
@@ -251,15 +253,12 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_ADM_LIST
 
     elif matn == "📊 Umumiy hisobot":
-        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
-        try:
-            fayl = super_admin_hisobot()
-            with open(fayl, 'rb') as f:
-                await update.message.reply_document(f, filename="umumiy_hisobot.xlsx")
-            os.remove(fayl)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Xatolik: {e}")
-        return SA_MENU
+        await update.message.reply_text(
+            "📅 Qaysi kun uchun hisobot? (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-24\n\n"
+            "🔔 BARCHA kompaniyalarning hisoboti ko'rsatiladi!",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_HISOBOT_SANA
 
     elif matn == "📋 Audit Log":
         logs = super_admin_audit_log(limit=20)
@@ -799,16 +798,11 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_DAV_MENU
 
     elif matn == "📊 Hisobot":
-        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
-        try:
-            fayl = kompaniya_hisobot(komp_id)
-            if fayl:
-                with open(fayl, 'rb') as f:
-                    await update.message.reply_document(f, filename=fayl)
-                os.remove(fayl)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Xatolik: {e}")
-        return ADM_MENU
+        await update.message.reply_text(
+            "📅 Qaysi kun uchun hisobot? (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-24",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_HISOBOT_SANA
 
     elif matn == "📍 GPS sozlash":
         lat, lon, radius = get_gps(komp_id)
@@ -1170,6 +1164,71 @@ async def adm_dav_tahrir_amal(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def adm_dav_tahrir_q(update: Update, context: ContextTypes.DEFAULT_TYPE):
     davomat_tahrirlash(context.user_data.get('dav_id'), context.user_data.get('dav_tahrir_maydon'), update.message.text.strip())
     await update.message.reply_text("✅ Davomat yangilandi!", reply_markup=adm_menu_kb())
+    return ADM_MENU
+
+# ==================== ADMIN DAILY REPORT ====================
+
+async def adm_hisobot_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sana = update.message.text.strip()
+    try:
+        datetime.strptime(sana, "%Y-%m-%d")
+        context.user_data['hisobot_sana'] = sana
+        komp_id = context.user_data.get('komp_id')
+        conn = connect(); cur = conn.cursor()
+        cur.execute('''SELECT x.id,x.ism,x.lavozim,d.keldi,d.ketdi,d.ish_soat,d.kechikish,d.keldi_rasm,d.ketdi_rasm
+                      FROM xodimlar x LEFT JOIN davomat d ON x.id=d.xodim_id AND d.sana=%s
+                      WHERE x.kompaniya_id=%s ORDER BY x.ism''', (sana, komp_id))
+        davomatlar = cur.fetchall(); cur.close(); conn.close()
+
+        context.user_data['davomatlar'] = davomatlar
+        context.user_data['dav_index'] = 0
+        await adm_hisobot_kun_display(update, context)
+        return ADM_HISOBOT_KUN
+    except ValueError:
+        await update.message.reply_text("❌ Format xato! (YYYY-MM-DD)")
+        return ADM_HISOBOT_SANA
+
+async def adm_hisobot_kun_display(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    davomatlar = context.user_data.get('davomatlar', [])
+    sana = context.user_data.get('hisobot_sana')
+
+    if not davomatlar:
+        await update.message.reply_text(
+            f"📅 {sana}\n❌ Bu kun ma'lumot yo'q!",
+            reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    xabar = f"📊 *{sana} KUNINING HISOBOTI*\n━━━━━━━━━━━━━━━\n\n"
+
+    for i, dav in enumerate(davomatlar, 1):
+        xodim_id, ism, lavozim, keldi, ketdi, ish_soat, kechikish, rasm_keldi, rasm_ketdi = dav
+        s = int(float(ish_soat or 0)); d = int((float(ish_soat or 0) - s) * 60)
+        kech = kechikish_format(int(kechikish or 0))
+
+        xabar += (f"{i}. 👤 *{ism}* ({lavozim})\n"
+                  f"   📍 Keldi: {keldi or '—'}\n"
+                  f"   📍 Ketdi: {ketdi or '—'}\n"
+                  f"   ⏱ Ish: {s}s {d}d | ⚠️ {kech}\n\n")
+
+    await update.message.reply_text(xabar, parse_mode='Markdown')
+
+    # Rasmlarni alohida yubor
+    for i, dav in enumerate(davomatlar, 1):
+        xodim_id, ism, lavozim, keldi, ketdi, ish_soat, kechikish, rasm_keldi, rasm_ketdi = dav
+        if rasm_keldi or rasm_ketdi:
+            await update.message.reply_text(f"{i}. {ism} - Rasmlar:", parse_mode='Markdown')
+            if rasm_keldi:
+                try:
+                    await context.bot.send_photo(update.effective_chat.id, rasm_keldi, caption="📸 Keldi")
+                except:
+                    pass
+            if rasm_ketdi:
+                try:
+                    await context.bot.send_photo(update.effective_chat.id, rasm_ketdi, caption="📸 Ketdi")
+                except:
+                    pass
+
+    await update.message.reply_text("✅ Hisobot yakunlandi!", reply_markup=adm_menu_kb())
     return ADM_MENU
 
 # ==================== HR PANEL ====================
@@ -1641,6 +1700,69 @@ async def sorov_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{emoji} Hurmatli {xodim[0]},\nSababli so'rovingiz {holat}!\n📅 {sana}")
         except: pass
 
+# ==================== SUPER ADMIN DAILY REPORT ====================
+
+async def sa_hisobot_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sana = update.message.text.strip()
+    try:
+        datetime.strptime(sana, "%Y-%m-%d")
+        context.user_data['hisobot_sana'] = sana
+        conn = connect(); cur = conn.cursor()
+        cur.execute('''SELECT k.nomi,x.ism,x.lavozim,d.keldi,d.ketdi,d.ish_soat,d.kechikish,d.keldi_rasm,d.ketdi_rasm
+                      FROM davomat d
+                      JOIN xodimlar x ON d.xodim_id=x.id
+                      JOIN kompaniyalar k ON d.kompaniya_id=k.id
+                      WHERE d.sana=%s
+                      ORDER BY k.nomi,x.ism''', (sana,))
+        davomatlar = cur.fetchall(); cur.close(); conn.close()
+
+        context.user_data['sa_davomatlar'] = davomatlar
+
+        if not davomatlar:
+            await update.message.reply_text(
+                f"📅 {sana}\n❌ Bu kun ma'lumot yo'q!",
+                reply_markup=sa_menu_kb())
+            return SA_MENU
+
+        xabar = f"📊 *{sana} - BARCHA KOMPANIYALAR HISOBOTI*\n" + "="*50 + "\n\n"
+
+        komp_name = ""
+        for i, dav in enumerate(davomatlar, 1):
+            komp, ism, lavozim, keldi, ketdi, ish_soat, kechikish, rasm_keldi, rasm_ketdi = dav
+            if komp != komp_name:
+                xabar += f"\n🏢 *{komp}*\n" + "-"*40 + "\n"
+                komp_name = komp
+
+            s = int(float(ish_soat or 0)); d = int((float(ish_soat or 0) - s) * 60)
+            kech = kechikish_format(int(kechikish or 0))
+            xabar += (f"👤 {ism} ({lavozim})\n"
+                      f"   📍 {keldi or '—'} → {ketdi or '—'} | "
+                      f"⏱ {s}s {d}d | ⚠️ {kech}\n")
+
+        await update.message.reply_text(xabar, parse_mode='Markdown')
+
+        # Rasmlarni alohida yubor
+        for dav in davomatlar:
+            komp, ism, lavozim, keldi, ketdi, ish_soat, kechikish, rasm_keldi, rasm_ketdi = dav
+            if rasm_keldi or rasm_ketdi:
+                await update.message.reply_text(f"🏢 {komp} - {ism}: Rasmlar")
+                if rasm_keldi:
+                    try:
+                        await context.bot.send_photo(update.effective_chat.id, rasm_keldi, caption="📸 Keldi")
+                    except:
+                        pass
+                if rasm_ketdi:
+                    try:
+                        await context.bot.send_photo(update.effective_chat.id, rasm_ketdi, caption="📸 Ketdi")
+                    except:
+                        pass
+
+        await update.message.reply_text("✅ Hisobot yakunlandi!", reply_markup=sa_menu_kb())
+        return SA_MENU
+    except ValueError:
+        await update.message.reply_text("❌ Format xato! (YYYY-MM-DD)")
+        return SA_HISOBOT_SANA
+
 # ==================== LIVE LOKATSIYA UPDATE ====================
 
 async def live_location_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1781,6 +1903,8 @@ def main():
             SA_KOMP_XODIM_AMAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_amal)],
             SA_KOMP_XODIM_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_tahrir)],
             SA_KOMP_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_delete_kod)],
+            SA_HISOBOT_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana)],
+            SA_HISOBOT_KUN: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana)],
             ADM_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_menu)],
             ADM_XODIM_LIST: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_list)],
             ADM_XODIM_ISM: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_ism)],
@@ -1808,6 +1932,8 @@ def main():
             ADM_DAV_TAHRIR_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_tahrir_tanlash)],
             ADM_DAV_TAHRIR_AMAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_tahrir_amal)],
             ADM_DAV_TAHRIR_Q: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_dav_tahrir_q)],
+            ADM_HISOBOT_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_hisobot_sana)],
+            ADM_HISOBOT_KUN: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_hisobot_sana)],
             HR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_menu_handler)],
             HR_MAN_XODIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_man_xodim)],
             HR_MAN_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_man_sana)],
