@@ -1,0 +1,17 @@
+﻿# Database
+*.db
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+*.env
+
+# Noto'g'ri yaratilgan fayllar
+New-Item *
+ni *
