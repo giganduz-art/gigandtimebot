@@ -654,21 +654,15 @@ def xodim_streak_olish(xodim_id):
     """Xodimning davomiylik streakini olish"""
     conn = connect(); cur = conn.cursor()
     bugun = hozir().date()
-    cur.execute('''SELECT COUNT(*) FROM davomat
-                  WHERE xodim_id=%s AND keldi IS NOT NULL
-                  AND sana >= %s AND holat NOT IN ('kasal','ta\'til')
-                  ORDER BY sana DESC''', (xodim_id, str(bugun - timedelta(days=30))))
-    kunlar = cur.fetchall(); cur.close(); conn.close()
-
     streak = 0
+
     for i in range(30):
         check_date = (bugun - timedelta(days=i)).strftime("%Y-%m-%d")
-        cur = conn.cursor()
         cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s AND keldi IS NOT NULL", (xodim_id, check_date))
         if cur.fetchone(): streak += 1
         else: break
-        cur.close(); conn.close(); conn = connect()
-    return streak
+
+    cur.close(); conn.close(); return streak
 
 def haftalik_reyting_xodimlar(komp_id):
     """Kompaniyaning haftalik top 5 xodimi"""
