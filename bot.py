@@ -456,12 +456,18 @@ async def keldi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if admin_id:
         try:
             await bot.send_message(admin_id, xabar)
-            await bot.send_photo(admin_id, rasm_id)
+            if update.message.photo:
+                await bot.send_photo(admin_id, rasm_id)
+            else:
+                await bot.send_video_note(admin_id, rasm_id)
         except: pass
     for hr_id in hr_ids:
         try:
             await bot.send_message(hr_id, xabar)
-            await bot.send_photo(hr_id, rasm_id)
+            if update.message.photo:
+                await bot.send_photo(hr_id, rasm_id)
+            else:
+                await bot.send_video_note(hr_id, rasm_id)
         except: pass
     await xodim_menu(update, xodim[0])
     return ConversationHandler.END
@@ -533,12 +539,18 @@ async def ketdi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if admin_id:
         try:
             await bot.send_message(admin_id, xabar)
-            await bot.send_photo(admin_id, rasm_id)
+            if update.message.photo:
+                await bot.send_photo(admin_id, rasm_id)
+            else:
+                await bot.send_video_note(admin_id, rasm_id)
         except: pass
     for hr_id in hr_ids:
         try:
             await bot.send_message(hr_id, xabar)
-            await bot.send_photo(hr_id, rasm_id)
+            if update.message.photo:
+                await bot.send_photo(hr_id, rasm_id)
+            else:
+                await bot.send_video_note(hr_id, rasm_id)
         except: pass
     await xodim_menu(update, xodim[0])
     return ConversationHandler.END
