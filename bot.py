@@ -1269,16 +1269,21 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
             return XOD_KELDI_GPS
         else:
+            # GPS o'chirilgan, lekin selfie kerak
             natija = keldi_belgilash(xodim_id, komp_id)
             if natija == "already":
                 await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
-            else:
-                _, vaqt, kechikish = natija.split("|")
-                msg = f"✅ Keldi vaqti: {vaqt}"
-                if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
-                await update.message.reply_text(msg, reply_markup=xod_menu_kb())
-                await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi')
-            return XOD_MENU
+                return XOD_MENU
+            _, vaqt, kechikish = natija.split("|")
+            msg = f"✅ Keldi vaqti: {vaqt}"
+            if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+
+            # Selfie yoki video so'ra
+            context.user_data['keldi_m'] = 0
+            await update.message.reply_text(
+                f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:",
+                reply_markup=ReplyKeyboardRemove())
+            return XOD_KELDI_RASM
 
     elif matn == "🚪 Ketdim":
         if komp[9] or komp[14]:
@@ -1290,14 +1295,18 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             natija = ketdi_belgilash(xodim_id, komp_id)
             if natija == "nokeldi":
                 await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
-            else:
-                _, vaqt, ish_soat, ish_tugash = natija.split("|")
-                xodim = xodim_olish(xodim_id)
-                xabar = ketdi_xabar_matni(xodim[1] if xodim else '', ish_tugash, vaqt, float(ish_soat))
-                await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=xod_menu_kb())
-                await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi')
-                live_lokatsiya_ochirish(xodim_id)
-            return XOD_MENU
+                return XOD_MENU
+            _, vaqt, ish_soat, ish_tugash = natija.split("|")
+            context.user_data['ketdi_vaqt'] = vaqt
+            context.user_data['ketdi_ish_soat'] = ish_soat
+            context.user_data['ketdi_ish_tugash'] = ish_tugash
+
+            # Selfie yoki video so'ra
+            context.user_data['ketdi_m'] = 0
+            await update.message.reply_text(
+                f"✅ Ketdi vaqti: {vaqt}\n\n📸 Selfie yoki 🎥 video yuboring:",
+                reply_markup=ReplyKeyboardRemove())
+            return XOD_KETDI_RASM
 
     elif matn == "📋 Davomatim":
         davomatlar = xodim_davomati(xodim_id)
@@ -1489,13 +1498,12 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # MOTIVATSIYA: Bugungi statistika va motivatsiya matni
     xodim = xodim_olish(xodim_id)
-    stat = xodim_bugun_statistika(xodim_id)
     streak = xodim_streak_olish(xodim_id)
-    ish_tugash = xodim[6] if xodim else "18:00"
-    ketdi_vaqt = hozir().strftime("%H:%M")
-    ish_soat = stat[2] if stat and stat[2] else 0
+    ish_tugash = context.user_data.get('ketdi_ish_tugash') or (xodim[6] if xodim else "18:00")
+    ketdi_vaqt = context.user_data.get('ketdi_vaqt') or hozir().strftime("%H:%M")
+    ish_soat = float(context.user_data.get('ketdi_ish_soat', 0))
 
-    motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, float(ish_soat), streak)
+    motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak)
 
     # AUDIT LOG
     user_id = update.effective_user.id
