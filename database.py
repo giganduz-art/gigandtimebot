@@ -46,6 +46,8 @@ def create_tables():
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS admin_kod TEXT DEFAULT '1234'")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS live_gps_aktiv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS live_gps_tekshiruv BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_aktiv BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_ssid TEXT DEFAULT ''")
 
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
         id SERIAL PRIMARY KEY, ism TEXT NOT NULL, telefon TEXT, kod TEXT,
@@ -238,6 +240,19 @@ def get_gps(komp_id):
     cur.execute("SELECT gps_lat,gps_lon,gps_radius FROM kompaniyalar WHERE id=%s", (komp_id,))
     r = cur.fetchone(); cur.close(); conn.close()
     return r if r else (41.299496, 69.240073, 200)
+
+def get_wifi(komp_id):
+    """WiFi sozlamalarini olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT wifi_aktiv,wifi_ssid FROM kompaniyalar WHERE id=%s", (komp_id,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return r if r else (False, "")
+
+def wifi_sozla(komp_id, aktiv, ssid):
+    """WiFi sozlamalarini o'rnatish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s WHERE id=%s", (aktiv, ssid, komp_id))
+    conn.commit(); cur.close(); conn.close()
 
 # ========== XODIMLAR ==========
 

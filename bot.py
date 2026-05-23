@@ -107,6 +107,12 @@ def xod_menu_kb():
         ["📝 Sababli so'rov", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
+def xod_wifi_kb():
+    return ReplyKeyboardMarkup([
+        ["📡 WiFi ulangan", "📍 Lokatsiya yuborish"],
+        ["🏠 Orqaga"]
+    ], resize_keyboard=True)
+
 
 # ==================== START ====================
 
