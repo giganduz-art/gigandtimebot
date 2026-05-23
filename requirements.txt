@@ -1,4 +1,5 @@
 pytz
 openpyxl
 psycopg2-binary
+APScheduler==3.10.4
 python-telegram-bot[job-queue]
