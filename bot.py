@@ -33,6 +33,7 @@ def get_gps():
     cur = conn.cursor()
     cur.execute("SELECT gps_lat, gps_lon, gps_radius FROM kompaniyalar WHERE id=1")
     row = cur.fetchone()
+    cur.close()
     conn.close()
     if row:
         return row[0], row[1], row[2]
@@ -41,8 +42,9 @@ def get_gps():
 def get_hr_ids(kompaniya_id):
     conn = connect()
     cur = conn.cursor()
-    cur.execute("SELECT telegram_id FROM xodimlar WHERE kompaniya_id=? AND rol='hr' AND telegram_id IS NOT NULL", (kompaniya_id,))
+    cur.execute("SELECT telegram_id FROM xodimlar WHERE kompaniya_id=%s AND rol='hr' AND telegram_id IS NOT NULL", (kompaniya_id,))
     hrs = cur.fetchall()
+    cur.close()
     conn.close()
     return [h[0] for h in hrs]
 
@@ -51,6 +53,7 @@ def get_admin_id():
     cur = conn.cursor()
     cur.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     row = cur.fetchone()
+    cur.close()
     conn.close()
     return row[0] if row else None
 
@@ -84,8 +87,6 @@ def motivatsiya_ketdi(ism, ish_soat, kerak_soat):
                 f"Bu ish intizomiga ziddir.\n"
                 f"Rahbariyat xabardor etiladi! ❌")
 
-# ==================== MENYULAR ====================
-
 async def admin_menu(update):
     buttons = [
         ["👥 Xodimlar", "➕ Xodim qo'shish"],
@@ -113,41 +114,30 @@ async def hr_menu(update):
     markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
     await update.message.reply_text("👔 HR panel:", reply_markup=markup)
 
-# ==================== START ====================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     conn = connect()
     cur = conn.cursor()
-
     cur.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur.fetchone()
     if admin and admin[0] == user_id:
-        conn.close()
+        cur.close(); conn.close()
         await admin_menu(update)
         return ConversationHandler.END
-
-    cur.execute("SELECT id, ism, rol FROM xodimlar WHERE telegram_id=?", (user_id,))
+    cur.execute("SELECT id, ism, rol FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
     if xodim:
-        conn.close()
+        cur.close(); conn.close()
         if xodim[2] == "hr":
             await hr_menu(update)
         else:
             await xodim_menu(update, xodim[1])
         return ConversationHandler.END
-
-    conn.close()
+    cur.close(); conn.close()
     button = KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)
     markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(
-        "👋 Xush kelibsiz!\n\n"
-        "📱 Telefon raqamingizni yuboring:",
-        reply_markup=markup
-    )
+    await update.message.reply_text("👋 Xush kelibsiz!\n\n📱 Telefon raqamingizni yuboring:", reply_markup=markup)
     return TELEFON_TASDIQ
-
-# ==================== TELEFON TASDIQ ====================
 
 async def telefon_tasdiq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
@@ -156,44 +146,31 @@ async def telefon_tasdiq(update: Update, context: ContextTypes.DEFAULT_TYPE):
         markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_text("❌ Iltimos telefon tugmasini bosing!", reply_markup=markup)
         return TELEFON_TASDIQ
-
     telefon = contact.phone_number.replace("+", "")
     user_id = update.effective_user.id
-
     if telefon.endswith(ADMIN_TELEFON):
-        conn = connect()
-        cur = conn.cursor()
+        conn = connect(); cur = conn.cursor()
         cur.execute("SELECT id FROM kompaniyalar WHERE id=1")
         komp = cur.fetchone()
-        conn.close()
+        cur.close(); conn.close()
         if not komp:
             context.user_data['yangi_rol'] = 'admin'
             context.user_data['user_id'] = user_id
             await update.message.reply_text("🏢 Kompaniyangiz nomini kiriting:")
             return KOMPANIYA_NOMI
         else:
-            conn2 = connect()
-            cur2 = conn2.cursor()
-            cur2.execute("UPDATE kompaniyalar SET admin_id=? WHERE id=1", (user_id,))
-            conn2.commit()
-            conn2.close()
+            conn2 = connect(); cur2 = conn2.cursor()
+            cur2.execute("UPDATE kompaniyalar SET admin_id=%s WHERE id=1", (user_id,))
+            conn2.commit(); cur2.close(); conn2.close()
             await admin_menu(update)
             return ConversationHandler.END
-
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, ism, rol FROM xodimlar WHERE telefon LIKE ?", (f"%{telefon[-9:]}%",))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id, ism, rol FROM xodimlar WHERE telefon LIKE %s", (f"%{telefon[-9:]}%",))
     xodim = cur.fetchone()
-    conn.close()
-
+    cur.close(); conn.close()
     if not xodim:
-        await update.message.reply_text(
-            "⛔️ Sizning raqamingiz tizimda yo'q!\n\n"
-            "Admin bilan bog'laning:\n"
-            f"📱 +998 {ADMIN_TELEFON}"
-        )
+        await update.message.reply_text(f"⛔️ Sizning raqamingiz tizimda yo'q!\n\nAdmin bilan bog'laning:\n📱 +998 {ADMIN_TELEFON}")
         return ConversationHandler.END
-
     context.user_data['telefon_xodim'] = xodim
     context.user_data['user_id'] = user_id
     await update.message.reply_text("🔐 Sizga berilgan kodni kiriting:")
@@ -203,50 +180,33 @@ async def kod_tasdiq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kiritilgan_kod = update.message.text
     xodim = context.user_data.get('telefon_xodim')
     user_id = context.user_data.get('user_id')
-
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT kod FROM xodimlar WHERE id=?", (xodim[0],))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT kod FROM xodimlar WHERE id=%s", (xodim[0],))
     row = cur.fetchone()
-
     if not row or row[0] != kiritilgan_kod:
-        conn.close()
-        await update.message.reply_text(
-            "❌ Kod noto'g'ri!\n\n"
-            "Admin bilan bog'laning:\n"
-            f"📱 +998 {ADMIN_TELEFON}"
-        )
+        cur.close(); conn.close()
+        await update.message.reply_text(f"❌ Kod noto'g'ri!\n\nAdmin bilan bog'laning:\n📱 +998 {ADMIN_TELEFON}")
         return ConversationHandler.END
-
-    cur.execute("UPDATE xodimlar SET telegram_id=? WHERE id=?", (user_id, xodim[0]))
-    conn.commit()
-    conn.close()
-
+    cur.execute("UPDATE xodimlar SET telegram_id=%s WHERE id=%s", (user_id, xodim[0]))
+    conn.commit(); cur.close(); conn.close()
     if xodim[2] == "hr":
         await hr_menu(update)
     else:
         await xodim_menu(update, xodim[1])
     return ConversationHandler.END
 
-# ==================== KOMPANIYA ====================
-
 async def kompaniya_saqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('yangi_rol') == 'admin':
         nomi = update.message.text
         user_id = context.user_data.get('user_id')
-        conn = connect()
-        cur = conn.cursor()
-        cur.execute('''INSERT OR IGNORE INTO kompaniyalar
-                      (nomi, admin_telefon, admin_id)
-                      VALUES (?, ?, ?)''', (nomi, ADMIN_TELEFON, user_id))
-        conn.commit()
-        conn.close()
+        conn = connect(); cur = conn.cursor()
+        cur.execute("INSERT INTO kompaniyalar (nomi, admin_telefon, admin_id) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                    (nomi, ADMIN_TELEFON, user_id))
+        conn.commit(); cur.close(); conn.close()
         await update.message.reply_text(f"✅ '{nomi}' kompaniyasi yaratildi!")
         await admin_menu(update)
         return ConversationHandler.END
     return KOMPANIYA_NOMI
-
-# ==================== XODIM QO'SHISH ====================
 
 async def xodim_qosh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👤 Xodim ism familiyasini kiriting:")
@@ -293,94 +253,70 @@ async def xodim_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     kod = update.message.text
     rol = context.user_data['rol']
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT id FROM kompaniyalar WHERE id=1")
     komp = cur.fetchone()
     if not komp:
-        cur.execute("SELECT kompaniya_id FROM xodimlar WHERE telegram_id=? AND rol='hr'", (user_id,))
+        cur.execute("SELECT kompaniya_id FROM xodimlar WHERE telegram_id=%s AND rol='hr'", (user_id,))
         hr = cur.fetchone()
         if hr:
             komp = hr
     if komp:
-        cur.execute('''INSERT INTO xodimlar
-            (ism, telefon, lavozim, oylik, ish_boshlanish,
-             ish_tugash, kompaniya_id, rol, kod)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (context.user_data['ism'],
-             context.user_data['telefon'],
-             context.user_data['lavozim'],
-             context.user_data['oylik'],
-             context.user_data['ish_bosh'],
-             context.user_data['ish_tug'],
+        cur.execute('''INSERT INTO xodimlar (ism, telefon, lavozim, oylik, ish_boshlanish, ish_tugash, kompaniya_id, rol, kod)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+            (context.user_data['ism'], context.user_data['telefon'], context.user_data['lavozim'],
+             context.user_data['oylik'], context.user_data['ish_bosh'], context.user_data['ish_tug'],
              komp[0], rol, kod))
         conn.commit()
-    conn.close()
+    cur.close(); conn.close()
     await update.message.reply_text(
         f"✅ {context.user_data['ism']} qo'shildi!\n"
-        f"💼 {context.user_data['lavozim']}\n"
-        f"💰 {context.user_data['oylik']} so'm\n"
+        f"💼 {context.user_data['lavozim']}\n💰 {context.user_data['oylik']} so'm\n"
         f"⏰ {context.user_data['ish_bosh']} - {context.user_data['ish_tug']}\n"
-        f"🔑 Rol: {rol}\n"
-        f"🔐 Kod: {kod}"
-    )
-    conn2 = connect()
-    cur2 = conn2.cursor()
+        f"🔑 Rol: {rol}\n🔐 Kod: {kod}")
+    conn2 = connect(); cur2 = conn2.cursor()
     cur2.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur2.fetchone()
-    conn2.close()
+    cur2.close(); conn2.close()
     if admin and admin[0] == user_id:
         await admin_menu(update)
     else:
         await hr_menu(update)
     return ConversationHandler.END
 
-# ==================== XODIMLAR RO'YXATI ====================
-
 async def xodimlar_royxat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur.fetchone()
     is_admin = admin and admin[0] == user_id
-    cur.execute('''SELECT ism, lavozim, telefon, oylik,
-                  ish_boshlanish, ish_tugash, rol, kod
-                  FROM xodimlar WHERE kompaniya_id=1''')
+    cur.execute("SELECT ism, lavozim, telefon, oylik, ish_boshlanish, ish_tugash, rol, kod FROM xodimlar WHERE kompaniya_id=1")
     xodimlar = cur.fetchall()
-    conn.close()
+    cur.close(); conn.close()
     if not xodimlar:
         await update.message.reply_text("❌ Xodim yo'q!")
         return
     matn = "👥 Xodimlar ro'yxati:\n\n"
     for i, x in enumerate(xodimlar, 1):
-        matn += (f"{i}. {x[0]}\n"
-                f"   💼 {x[1]} | 📱 {x[2]}\n"
-                f"   💰 {x[3]} so'm\n"
-                f"   ⏰ {x[4]} - {x[5]}\n"
-                f"   🔑 {x[6]}\n")
+        matn += f"{i}. {x[0]}\n   💼 {x[1]} | 📱 {x[2]}\n   💰 {x[3]} so'm\n   ⏰ {x[4]} - {x[5]}\n   🔑 {x[6]}\n"
         if is_admin:
             matn += f"   🔐 Kod: {x[7]}\n"
         matn += "\n"
     await update.message.reply_text(matn)
 
-# ==================== XODIM TAHRIRLASH (FAQAT ADMIN) ====================
-
 async def tahrirlash_boshlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if not admin or admin[0] != user_id:
         await update.message.reply_text("❌ Faqat admin tahrirlashi mumkin!")
         return ConversationHandler.END
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT id, ism, lavozim FROM xodimlar WHERE kompaniya_id=1")
     xodimlar = cur.fetchall()
-    conn.close()
+    cur.close(); conn.close()
     if not xodimlar:
         await update.message.reply_text("❌ Xodim yo'q!")
         return ConversationHandler.END
@@ -402,35 +338,20 @@ async def tahrirlash_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         xodim_id = int(text.split(".")[0])
         context.user_data['tahrir_id'] = xodim_id
-        conn = connect()
-        cur = conn.cursor()
-        cur.execute('''SELECT ism, telefon, lavozim, oylik,
-                      ish_boshlanish, ish_tugash, rol, kod
-                      FROM xodimlar WHERE id=?''', (xodim_id,))
+        conn = connect(); cur = conn.cursor()
+        cur.execute("SELECT ism, telefon, lavozim, oylik, ish_boshlanish, ish_tugash, rol, kod FROM xodimlar WHERE id=%s", (xodim_id,))
         x = cur.fetchone()
-        conn.close()
+        cur.close(); conn.close()
         if not x:
             await update.message.reply_text("❌ Xodim topilmadi!")
             return ConversationHandler.END
-        buttons = [
-            ["👤 Ism", "📱 Telefon"],
-            ["💼 Lavozim", "💰 Oylik"],
-            ["⏰ Ish boshlanish", "⏰ Ish tugash"],
-            ["🔑 Rol", "🔐 Kod"],
-            ["🔙 Bekor qilish"]
-        ]
+        buttons = [["👤 Ism", "📱 Telefon"], ["💼 Lavozim", "💰 Oylik"],
+                   ["⏰ Ish boshlanish", "⏰ Ish tugash"], ["🔑 Rol", "🔐 Kod"], ["🔙 Bekor qilish"]]
         markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
         await update.message.reply_text(
-            f"✏️ {x[0]} — nimani o'zgartirasiz?\n\n"
-            f"👤 Ism: {x[0]}\n"
-            f"📱 Telefon: {x[1]}\n"
-            f"💼 Lavozim: {x[2]}\n"
-            f"💰 Oylik: {x[3]} so'm\n"
-            f"⏰ Ish vaqti: {x[4]} - {x[5]}\n"
-            f"🔑 Rol: {x[6]}\n"
-            f"🔐 Kod: {x[7]}",
-            reply_markup=markup
-        )
+            f"✏️ {x[0]} — nimani o'zgartirasiz?\n\n👤 Ism: {x[0]}\n📱 Telefon: {x[1]}\n"
+            f"💼 Lavozim: {x[2]}\n💰 Oylik: {x[3]} so'm\n⏰ Ish vaqti: {x[4]} - {x[5]}\n"
+            f"🔑 Rol: {x[6]}\n🔐 Kod: {x[7]}", reply_markup=markup)
         return TAHRIR_QIYMAT
     except:
         await update.message.reply_text("❌ Xato! Qaytadan tanlang.")
@@ -439,12 +360,9 @@ async def tahrirlash_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def tahrirlash_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     xodim_id = context.user_data.get('tahrir_id')
-    user_id = update.effective_user.id
-
     if text == "🔙 Bekor qilish":
         await admin_menu(update)
         return ConversationHandler.END
-
     maydon_map = {
         "👤 Ism": ("ism", "Yangi ismni kiriting:"),
         "📱 Telefon": ("telefon", "Yangi telefon raqamini kiriting:"),
@@ -455,55 +373,40 @@ async def tahrirlash_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔑 Rol": ("rol", "Rolni tanlang:"),
         "🔐 Kod": ("kod", "Yangi kodni kiriting:"),
     }
-
     if text in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[text][0]
         if text == "🔑 Rol":
-            buttons = [["👷 Xodim", "👔 HR"]]
-            markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+            markup = ReplyKeyboardMarkup([["👷 Xodim", "👔 HR"]], resize_keyboard=True)
             await update.message.reply_text(maydon_map[text][1], reply_markup=markup)
         else:
             await update.message.reply_text(maydon_map[text][1])
         context.user_data['tahrir_kutish'] = True
         return TAHRIR_QIYMAT
-
     if context.user_data.get('tahrir_kutish'):
         maydon = context.user_data.get('tahrir_maydon')
-        yangi_qiymat = text
-        if maydon == "rol":
-            yangi_qiymat = "hr" if text == "👔 HR" else "xodim"
-        conn = connect()
-        cur = conn.cursor()
-        cur.execute(f"UPDATE xodimlar SET {maydon}=? WHERE id=?", (yangi_qiymat, xodim_id))
-        conn.commit()
-        conn.close()
+        yangi_qiymat = "hr" if (maydon == "rol" and text == "👔 HR") else ("xodim" if maydon == "rol" else text)
+        conn = connect(); cur = conn.cursor()
+        cur.execute(f"UPDATE xodimlar SET {maydon}=%s WHERE id=%s", (yangi_qiymat, xodim_id))
+        conn.commit(); cur.close(); conn.close()
         context.user_data['tahrir_kutish'] = False
         await update.message.reply_text("✅ Muvaffaqiyatli yangilandi!")
         await admin_menu(update)
         return ConversationHandler.END
-
     return TAHRIR_QIYMAT
-
-# ==================== GPS + SELFIE KELDI ====================
 
 async def keldi_gps_sorov(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if not xodim:
         await update.message.reply_text("❌ Siz ro'yxatdan o'tmagansiz!")
         return ConversationHandler.END
     lat, lon, radius = get_gps()
     button = KeyboardButton("📍 Joylashuvni yuborish", request_location=True)
     markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(
-        f"📍 Joylashuvingizni yuboring!\n"
-        f"⚠️ Faqat ish joyidan {radius} metr ichida bo'lsangiz belgilanadi.",
-        reply_markup=markup
-    )
+    await update.message.reply_text(f"📍 Joylashuvingizni yuboring!\n⚠️ Faqat ish joyidan {radius} metr ichida bo'lsangiz belgilanadi.", reply_markup=markup)
     return KELDI_GPS
 
 async def keldi_gps_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -514,25 +417,17 @@ async def keldi_gps_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     lat, lon, radius = get_gps()
     m = masofa(lat, lon, location.latitude, location.longitude)
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, ism FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id, ism FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if m > radius:
-        await update.message.reply_text(
-            f"❌ Siz ish joyidan uzoqdasiz!\n"
-            f"📏 Masofa: {int(m)} metr\n"
-            f"✅ Ruxsat: {radius} metr"
-        )
+        await update.message.reply_text(f"❌ Siz ish joyidan uzoqdasiz!\n📏 Masofa: {int(m)} metr\n✅ Ruxsat: {radius} metr")
         await xodim_menu(update, xodim[1] if xodim else "")
         return ConversationHandler.END
     context.user_data['keldi_xodim_id'] = xodim[0]
     context.user_data['keldi_masofa'] = int(m)
-    await update.message.reply_text(
-        f"✅ Joylashuv tasdiqlandi! ({int(m)} metr)\n\n"
-        f"🤳 Endi selfie yuboring:"
-    )
+    await update.message.reply_text(f"✅ Joylashuv tasdiqlandi! ({int(m)} metr)\n\n🤳 Endi selfie yuboring:")
     return KELDI_RASM
 
 async def keldi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -543,67 +438,47 @@ async def keldi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rasm_id = update.message.photo[-1].file_id
     natija = keldi_belgilash(xodim_id)
     keldi_rasm_saqlash(xodim_id, rasm_id)
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT ism, lavozim, kompaniya_id FROM xodimlar WHERE id=?", (xodim_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT ism, lavozim, kompaniya_id FROM xodimlar WHERE id=%s", (xodim_id,))
     xodim = cur.fetchone()
-    cur.execute("SELECT kechikish FROM davomat WHERE xodim_id=? AND sana=?",
-                (xodim_id, datetime.now().strftime("%Y-%m-%d")))
+    cur.execute("SELECT kechikish FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, datetime.now().strftime("%Y-%m-%d")))
     dav = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     kechikish = dav[0] if dav else 0
     motiv = motivatsiya_keldi(xodim[0], kechikish)
-    await update.message.reply_text(
-        f"{natija}\n"
-        f"📏 Masofa: {context.user_data.get('keldi_masofa')} metr\n\n"
-        f"{motiv}"
-    )
+    await update.message.reply_text(f"{natija}\n📏 Masofa: {context.user_data.get('keldi_masofa')} metr\n\n{motiv}")
     admin_id = get_admin_id()
     hr_ids = get_hr_ids(xodim[2])
-    xabar = (f"📨 KELDI XABARI\n"
-             f"━━━━━━━━━━━━━━━\n"
-             f"👤 {xodim[0]}\n"
-             f"💼 {xodim[1]}\n"
-             f"⏰ {datetime.now().strftime('%H:%M')}\n"
-             f"⚠️ Kechikish: {kechikish_format(kechikish)}\n"
-             f"📏 Masofa: {context.user_data.get('keldi_masofa')} metr\n"
-             f"━━━━━━━━━━━━━━━")
+    xabar = (f"📨 KELDI XABARI\n━━━━━━━━━━━━━━━\n👤 {xodim[0]}\n💼 {xodim[1]}\n"
+             f"⏰ {datetime.now().strftime('%H:%M')}\n⚠️ Kechikish: {kechikish_format(kechikish)}\n"
+             f"📏 Masofa: {context.user_data.get('keldi_masofa')} metr\n━━━━━━━━━━━━━━━")
     bot = update.get_bot()
     if admin_id:
         try:
             await bot.send_message(admin_id, xabar)
             await bot.send_photo(admin_id, rasm_id)
-        except:
-            pass
+        except: pass
     for hr_id in hr_ids:
         try:
             await bot.send_message(hr_id, xabar)
             await bot.send_photo(hr_id, rasm_id)
-        except:
-            pass
+        except: pass
     await xodim_menu(update, xodim[0])
     return ConversationHandler.END
 
-# ==================== GPS + SELFIE KETDI ====================
-
 async def ketdi_gps_sorov(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if not xodim:
         await update.message.reply_text("❌ Siz ro'yxatdan o'tmagansiz!")
         return ConversationHandler.END
     lat, lon, radius = get_gps()
     button = KeyboardButton("📍 Joylashuvni yuborish", request_location=True)
     markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(
-        f"📍 Joylashuvingizni yuboring!\n"
-        f"⚠️ Faqat ish joyidan {radius} metr ichida bo'lsangiz belgilanadi.",
-        reply_markup=markup
-    )
+    await update.message.reply_text(f"📍 Joylashuvingizni yuboring!\n⚠️ Faqat ish joyidan {radius} metr ichida bo'lsangiz belgilanadi.", reply_markup=markup)
     return KETDI_GPS
 
 async def ketdi_gps_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -614,25 +489,17 @@ async def ketdi_gps_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     lat, lon, radius = get_gps()
     m = masofa(lat, lon, location.latitude, location.longitude)
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, ism FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id, ism FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if m > radius:
-        await update.message.reply_text(
-            f"❌ Siz ish joyidan uzoqdasiz!\n"
-            f"📏 Masofa: {int(m)} metr\n"
-            f"✅ Ruxsat: {radius} metr"
-        )
+        await update.message.reply_text(f"❌ Siz ish joyidan uzoqdasiz!\n📏 Masofa: {int(m)} metr\n✅ Ruxsat: {radius} metr")
         await xodim_menu(update, xodim[1] if xodim else "")
         return ConversationHandler.END
     context.user_data['ketdi_xodim_id'] = xodim[0]
     context.user_data['ketdi_masofa'] = int(m)
-    await update.message.reply_text(
-        f"✅ Joylashuv tasdiqlandi! ({int(m)} metr)\n\n"
-        f"🤳 Endi selfie yuboring:"
-    )
+    await update.message.reply_text(f"✅ Joylashuv tasdiqlandi! ({int(m)} metr)\n\n🤳 Endi selfie yuboring:")
     return KETDI_RASM
 
 async def ketdi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -643,74 +510,56 @@ async def ketdi_rasm_olish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rasm_id = update.message.photo[-1].file_id
     natija = ketdi_belgilash(xodim_id)
     ketdi_rasm_saqlash(xodim_id, rasm_id)
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT ism, lavozim, kompaniya_id, ish_tugash FROM xodimlar WHERE id=?", (xodim_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT ism, lavozim, kompaniya_id, ish_tugash FROM xodimlar WHERE id=%s", (xodim_id,))
     xodim = cur.fetchone()
-    cur.execute("SELECT ish_soat FROM davomat WHERE xodim_id=? AND sana=?",
-                (xodim_id, datetime.now().strftime("%Y-%m-%d")))
+    cur.execute("SELECT ish_soat FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, datetime.now().strftime("%Y-%m-%d")))
     dav = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     ish_soat = dav[0] if dav else 0
     try:
         tugash = datetime.strptime(xodim[3], "%H:%M")
-        boshlanish = datetime.strptime("09:00", "%H:%M")
-        kerak = (tugash - boshlanish).total_seconds() / 3600
+        kerak = (tugash - datetime.strptime("09:00", "%H:%M")).total_seconds() / 3600
     except:
         kerak = 8
     motiv = motivatsiya_ketdi(xodim[0], ish_soat, kerak)
-    await update.message.reply_text(
-        f"{natija}\n"
-        f"📏 Masofa: {context.user_data.get('ketdi_masofa')} metr\n\n"
-        f"{motiv}"
-    )
+    await update.message.reply_text(f"{natija}\n📏 Masofa: {context.user_data.get('ketdi_masofa')} metr\n\n{motiv}")
     admin_id = get_admin_id()
     hr_ids = get_hr_ids(xodim[2])
-    xabar = (f"📨 KETDI XABARI\n"
-             f"━━━━━━━━━━━━━━━\n"
-             f"👤 {xodim[0]}\n"
-             f"💼 {xodim[1]}\n"
-             f"⏰ {datetime.now().strftime('%H:%M')}\n"
-             f"⏱ Ish vaqti: {soat_format(ish_soat)}\n"
-             f"📏 Masofa: {context.user_data.get('ketdi_masofa')} metr\n"
-             f"━━━━━━━━━━━━━━━")
+    xabar = (f"📨 KETDI XABARI\n━━━━━━━━━━━━━━━\n👤 {xodim[0]}\n💼 {xodim[1]}\n"
+             f"⏰ {datetime.now().strftime('%H:%M')}\n⏱ Ish vaqti: {soat_format(ish_soat)}\n"
+             f"📏 Masofa: {context.user_data.get('ketdi_masofa')} metr\n━━━━━━━━━━━━━━━")
     bot = update.get_bot()
     if admin_id:
         try:
             await bot.send_message(admin_id, xabar)
             await bot.send_photo(admin_id, rasm_id)
-        except:
-            pass
+        except: pass
     for hr_id in hr_ids:
         try:
             await bot.send_message(hr_id, xabar)
             await bot.send_photo(hr_id, rasm_id)
-        except:
-            pass
+        except: pass
     await xodim_menu(update, xodim[0])
     return ConversationHandler.END
 
-# ==================== MANUAL DAVOMAT ====================
-
 async def manual_boshlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur.fetchone()
     is_admin = admin and admin[0] == user_id
-    cur.execute("SELECT id, rol FROM xodimlar WHERE telegram_id=?", (user_id,))
+    cur.execute("SELECT id, rol FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
     is_hr = xodim and xodim[1] == "hr"
-    conn.close()
+    cur.close(); conn.close()
     if not is_admin and not is_hr:
         await update.message.reply_text("❌ Ruxsat yo'q!")
         return ConversationHandler.END
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT id, ism, lavozim FROM xodimlar WHERE kompaniya_id=1")
     xodimlar = cur.fetchall()
-    conn.close()
+    cur.close(); conn.close()
     if not xodimlar:
         await update.message.reply_text("❌ Xodim yo'q!")
         return ConversationHandler.END
@@ -764,86 +613,59 @@ async def manual_holat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manual_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     izoh = update.message.text
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT ism FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (user_id,))
     kiritdi = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     kiritdi_ism = kiritdi[0] if kiritdi else "Admin"
-    natija = manual_davomat(
-        context.user_data['manual_xodim_id'],
-        context.user_data['manual_sana'],
-        context.user_data['manual_keldi'],
-        context.user_data['manual_ketdi'],
-        context.user_data['manual_holat'],
-        izoh, kiritdi_ism, user_id
-    )
+    natija = manual_davomat(context.user_data['manual_xodim_id'], context.user_data['manual_sana'],
+        context.user_data['manual_keldi'], context.user_data['manual_ketdi'],
+        context.user_data['manual_holat'], izoh, kiritdi_ism, user_id)
     await update.message.reply_text(natija)
-    conn2 = connect()
-    cur2 = conn2.cursor()
+    conn2 = connect(); cur2 = conn2.cursor()
     cur2.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur2.fetchone()
-    conn2.close()
+    cur2.close(); conn2.close()
     if admin and admin[0] == user_id:
         await admin_menu(update)
     else:
         await hr_menu(update)
     return ConversationHandler.END
 
-# ==================== SABABLI SO'ROV ====================
-
 async def sababli_sorov_boshlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📋 Sababli qolish sababini yozing:\n\n"
-        "Masalan: Kasalman, shifokorga borishim kerak"
-    )
+    await update.message.reply_text("📋 Sababli qolish sababini yozing:\n\nMasalan: Kasalman, shifokorga borishim kerak")
     return SABAB_SOROV
 
 async def sababli_sorov_saqlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     sabab = update.message.text
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, ism, lavozim, kompaniya_id FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id, ism, lavozim, kompaniya_id FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
     if not xodim:
-        conn.close()
+        cur.close(); conn.close()
         await update.message.reply_text("❌ Siz ro'yxatdan o'tmagansiz!")
         return ConversationHandler.END
     sana = datetime.now().strftime("%Y-%m-%d")
-    cur.execute('''INSERT INTO sababli_sorovlar (xodim_id, sana, sabab)
-                  VALUES (?, ?, ?)''', (xodim[0], sana, sabab))
-    sorov_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    await update.message.reply_text(
-        "✅ So'rovingiz yuborildi!\n"
-        "Admin yoki HR tasdiqlashini kuting."
-    )
+    cur.execute("INSERT INTO sababli_sorovlar (xodim_id, sana, sabab) VALUES (%s, %s, %s) RETURNING id", (xodim[0], sana, sabab))
+    sorov_id = cur.fetchone()[0]
+    conn.commit(); cur.close(); conn.close()
+    await update.message.reply_text("✅ So'rovingiz yuborildi!\nAdmin yoki HR tasdiqlashini kuting.")
     admin_id = get_admin_id()
     hr_ids = get_hr_ids(xodim[3])
-    xabar = (f"📋 SABABLI SO'ROV\n"
-             f"━━━━━━━━━━━━━━━\n"
-             f"👤 {xodim[1]}\n"
-             f"💼 {xodim[2]}\n"
-             f"📅 Sana: {sana}\n"
-             f"📝 Sabab: {sabab}\n"
-             f"━━━━━━━━━━━━━━━")
+    xabar = (f"📋 SABABLI SO'ROV\n━━━━━━━━━━━━━━━\n👤 {xodim[1]}\n💼 {xodim[2]}\n"
+             f"📅 Sana: {sana}\n📝 Sabab: {sabab}\n━━━━━━━━━━━━━━━")
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"sabab_ha_{sorov_id}_{xodim[0]}"),
          InlineKeyboardButton("❌ Rad etish", callback_data=f"sabab_yoq_{sorov_id}_{xodim[0]}")]
     ])
     bot = update.get_bot()
     if admin_id:
-        try:
-            await bot.send_message(admin_id, xabar, reply_markup=keyboard)
-        except:
-            pass
+        try: await bot.send_message(admin_id, xabar, reply_markup=keyboard)
+        except: pass
     for hr_id in hr_ids:
-        try:
-            await bot.send_message(hr_id, xabar, reply_markup=keyboard)
-        except:
-            pass
+        try: await bot.send_message(hr_id, xabar, reply_markup=keyboard)
+        except: pass
     await xodim_menu(update, xodim[1])
     return ConversationHandler.END
 
@@ -851,55 +673,31 @@ async def sababli_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data.split("_")
-    holat = data[1]
-    sorov_id = int(data[2])
-    xodim_id = int(data[3])
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT sana, sabab FROM sababli_sorovlar WHERE id=?", (sorov_id,))
+    holat = data[1]; sorov_id = int(data[2]); xodim_id = int(data[3])
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT sana, sabab FROM sababli_sorovlar WHERE id=%s", (sorov_id,))
     sorov = cur.fetchone()
-    cur.execute("SELECT ism, telegram_id FROM xodimlar WHERE id=?", (xodim_id,))
+    cur.execute("SELECT ism, telegram_id FROM xodimlar WHERE id=%s", (xodim_id,))
     xodim = cur.fetchone()
     if holat == "ha":
-        cur.execute("UPDATE sababli_sorovlar SET holat='tasdiqlandi' WHERE id=?", (sorov_id,))
-        cur.execute("SELECT id FROM davomat WHERE xodim_id=? AND sana=?", (xodim_id, sorov[0]))
+        cur.execute("UPDATE sababli_sorovlar SET holat='tasdiqlandi' WHERE id=%s", (sorov_id,))
+        cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sorov[0]))
         if cur.fetchone():
-            cur.execute("UPDATE davomat SET holat='sababli', izoh=? WHERE xodim_id=? AND sana=?",
-                       (sorov[1], xodim_id, sorov[0]))
+            cur.execute("UPDATE davomat SET holat='sababli', izoh=%s WHERE xodim_id=%s AND sana=%s", (sorov[1], xodim_id, sorov[0]))
         else:
-            cur.execute("INSERT INTO davomat (xodim_id, sana, holat, izoh) VALUES (?, ?, 'sababli', ?)",
-                       (xodim_id, sorov[0], sorov[1]))
-        conn.commit()
-        conn.close()
+            cur.execute("INSERT INTO davomat (xodim_id, sana, holat, izoh) VALUES (%s, %s, 'sababli', %s)", (xodim_id, sorov[0], sorov[1]))
+        conn.commit(); cur.close(); conn.close()
         await query.edit_message_text(f"✅ {xodim[0]} ning sababli so'rovi tasdiqlandi!")
         if xodim[1]:
-            try:
-                await context.bot.send_message(
-                    xodim[1],
-                    f"✅ Hurmatli {xodim[0]},\n"
-                    f"Sababli qolish so'rovingiz tasdiqlandi!\n"
-                    f"📅 Sana: {sorov[0]}"
-                )
-            except:
-                pass
+            try: await context.bot.send_message(xodim[1], f"✅ Hurmatli {xodim[0]},\nSababli qolish so'rovingiz tasdiqlandi!\n📅 Sana: {sorov[0]}")
+            except: pass
     else:
-        cur.execute("UPDATE sababli_sorovlar SET holat='rad etildi' WHERE id=?", (sorov_id,))
-        conn.commit()
-        conn.close()
+        cur.execute("UPDATE sababli_sorovlar SET holat='rad etildi' WHERE id=%s", (sorov_id,))
+        conn.commit(); cur.close(); conn.close()
         await query.edit_message_text(f"❌ {xodim[0]} ning sababli so'rovi rad etildi!")
         if xodim[1]:
-            try:
-                await context.bot.send_message(
-                    xodim[1],
-                    f"❌ Hurmatli {xodim[0]},\n"
-                    f"Afsuski, sababli qolish so'rovingiz rad etildi.\n"
-                    f"📅 Sana: {sorov[0]}\n"
-                    f"Rahbariyat bilan bog'laning."
-                )
-            except:
-                pass
-
-# ==================== HISOBOT ====================
+            try: await context.bot.send_message(xodim[1], f"❌ Hurmatli {xodim[0]},\nAfsuski, sababli qolish so'rovingiz rad etildi.\n📅 Sana: {sorov[0]}\nRahbariyat bilan bog'laning.")
+            except: pass
 
 async def hisobot_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Excel tayyorlanmoqda...")
@@ -908,15 +706,12 @@ async def hisobot_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(f, filename="hisobot.xlsx")
     os.remove(fayl)
 
-# ==================== MENING DAVOMATIM ====================
-
 async def mening_davomatim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, ism FROM xodimlar WHERE telegram_id=?", (user_id,))
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id, ism FROM xodimlar WHERE telegram_id=%s", (user_id,))
     xodim = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if not xodim:
         await update.message.reply_text("❌ Siz ro'yxatdan o'tmagansiz!")
         return
@@ -926,46 +721,27 @@ async def mening_davomatim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     matn = f"📋 {xodim[1]} — Davomat:\n\n"
     for d in davomatlar[-10:]:
-        matn += (f"📅 {d[0]}\n"
-                f"   ✅ Keldi: {d[1] or '—'}\n"
-                f"   🚪 Ketdi: {d[2] or '—'}\n"
-                f"   ⏱ Ish vaqti: {soat_format(d[3])}\n"
-                f"   ⚠️ Kechikish: {kechikish_format(d[4])}\n"
-                f"   📋 Holat: {d[5] or 'normal'}\n"
-                f"   📝 Izoh: {d[6] or '—'}\n"
-                f"   👤 Kim kiritdi: {d[7] or 'xodim'}\n\n")
+        matn += (f"📅 {d[0]}\n   ✅ Keldi: {d[1] or '—'}\n   🚪 Ketdi: {d[2] or '—'}\n"
+                f"   ⏱ Ish vaqti: {soat_format(d[3])}\n   ⚠️ Kechikish: {kechikish_format(d[4])}\n"
+                f"   📋 Holat: {d[5] or 'normal'}\n   📝 Izoh: {d[6] or '—'}\n   👤 Kim kiritdi: {d[7] or 'xodim'}\n\n")
     await update.message.reply_text(matn)
-
-# ==================== SOZLAMALAR ====================
 
 async def sozlamalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT admin_id FROM kompaniyalar WHERE id=1")
     admin = cur.fetchone()
-    conn.close()
+    cur.close(); conn.close()
     if not admin or admin[0] != user_id:
         await update.message.reply_text("❌ Faqat admin sozlay oladi!")
         return ConversationHandler.END
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     cur.execute("SELECT nomi, gps_lat, gps_lon, gps_radius FROM kompaniyalar WHERE id=1")
     komp = cur.fetchone()
-    conn.close()
-    buttons = [
-        ["🏢 Korxona nomi", "📍 GPS koordinata"],
-        ["📏 GPS radius", "📱 Admin telefon"],
-        ["🔙 Orqaga"]
-    ]
+    cur.close(); conn.close()
+    buttons = [["🏢 Korxona nomi", "📍 GPS koordinata"], ["📏 GPS radius", "📱 Admin telefon"], ["🔙 Orqaga"]]
     markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
-    await update.message.reply_text(
-        f"⚙️ Sozlamalar:\n\n"
-        f"🏢 Korxona: {komp[0]}\n"
-        f"📍 GPS: {komp[1]}, {komp[2]}\n"
-        f"📏 Radius: {komp[3]} metr\n",
-        reply_markup=markup
-    )
+    await update.message.reply_text(f"⚙️ Sozlamalar:\n\n🏢 Korxona: {komp[0]}\n📍 GPS: {komp[1]}, {komp[2]}\n📏 Radius: {komp[3]} metr\n", reply_markup=markup)
     return SOZLAMA_TANLASH
 
 async def sozlama_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -988,26 +764,21 @@ async def sozlama_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sozlama_qiymat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     maydon = context.user_data.get('sozlama_maydon')
     text = update.message.text
-    conn = connect()
-    cur = conn.cursor()
+    conn = connect(); cur = conn.cursor()
     if maydon == "gps":
         try:
             lat, lon = text.split(",")
-            cur.execute("UPDATE kompaniyalar SET gps_lat=?, gps_lon=? WHERE id=1",
-                       (float(lat.strip()), float(lon.strip())))
+            cur.execute("UPDATE kompaniyalar SET gps_lat=%s, gps_lon=%s WHERE id=1", (float(lat.strip()), float(lon.strip())))
         except:
             await update.message.reply_text("❌ Noto'g'ri format! Masalan: 37.667088,67.02551")
-            conn.close()
+            cur.close(); conn.close()
             return SOZLAMA_QIYMAT
     else:
-        cur.execute(f"UPDATE kompaniyalar SET {maydon}=? WHERE id=1", (text,))
-    conn.commit()
-    conn.close()
+        cur.execute(f"UPDATE kompaniyalar SET {maydon}=%s WHERE id=1", (text,))
+    conn.commit(); cur.close(); conn.close()
     await update.message.reply_text("✅ Sozlama yangilandi!")
     await admin_menu(update)
     return ConversationHandler.END
-
-# ==================== MENU HANDLER ====================
 
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -1035,8 +806,6 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await sozlamalar(update, context)
     elif text == "🔙 Orqaga":
         await admin_menu(update)
-
-# ==================== MAIN ====================
 
 def main():
     create_tables()

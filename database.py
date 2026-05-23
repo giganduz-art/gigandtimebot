@@ -1,11 +1,18 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from datetime import datetime
 import openpyxl
+import os
 
 ADMIN_TELEFON = "919712222"
 
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:RdcrgixOGANtWvspNqPdFVPhyUkBmjeS@kodama.proxy.rlwy.net:59039/railway"
+)
+
 def connect():
-    return sqlite3.connect("gigandtime.db")
+    return psycopg2.connect(DATABASE_URL)
 
 def soat_format(soat_decimal):
     soat = int(float(soat_decimal or 0))
@@ -25,55 +32,56 @@ def create_tables():
     cur = conn.cursor()
 
     cur.execute('''CREATE TABLE IF NOT EXISTS kompaniyalar (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         nomi TEXT NOT NULL,
-        admin_telefon TEXT DEFAULT "919712222",
-        admin_id INTEGER,
+        admin_telefon TEXT DEFAULT '919712222',
+        admin_id BIGINT,
         gps_lat REAL DEFAULT 37.667088,
         gps_lon REAL DEFAULT 67.02551,
         gps_radius INTEGER DEFAULT 200
     )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         ism TEXT NOT NULL,
         telefon TEXT,
         kod TEXT,
         lavozim TEXT,
         oylik REAL DEFAULT 0,
-        ish_boshlanish TEXT DEFAULT "09:00",
-        ish_tugash TEXT DEFAULT "18:00",
+        ish_boshlanish TEXT DEFAULT '09:00',
+        ish_tugash TEXT DEFAULT '18:00',
         ishga_kirgan TEXT,
-        telegram_id INTEGER UNIQUE,
+        telegram_id BIGINT UNIQUE,
         kompaniya_id INTEGER,
-        rol TEXT DEFAULT "xodim"
+        rol TEXT DEFAULT 'xodim'
     )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS davomat (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         xodim_id INTEGER,
         sana TEXT,
         keldi TEXT,
         ketdi TEXT,
         ish_soat REAL DEFAULT 0,
         kechikish INTEGER DEFAULT 0,
-        holat TEXT DEFAULT "normal",
+        holat TEXT DEFAULT 'normal',
         izoh TEXT,
         keldi_rasm TEXT,
         ketdi_rasm TEXT,
-        kiritdi TEXT DEFAULT "xodim",
-        kiritdi_id INTEGER
+        kiritdi TEXT DEFAULT 'xodim',
+        kiritdi_id BIGINT
     )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS sababli_sorovlar (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         xodim_id INTEGER,
         sana TEXT,
         sabab TEXT,
-        holat TEXT DEFAULT "kutilmoqda"
+        holat TEXT DEFAULT 'kutilmoqda'
     )''')
 
     conn.commit()
+    cur.close()
     conn.close()
 
 def keldi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
@@ -81,11 +89,12 @@ def keldi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
     cur = conn.cursor()
     sana = datetime.now().strftime("%Y-%m-%d")
     vaqt = datetime.now().strftime("%H:%M")
-    cur.execute("SELECT id FROM davomat WHERE xodim_id=? AND sana=?", (xodim_id, sana))
+    cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
     if cur.fetchone():
+        cur.close()
         conn.close()
         return "⚠️ Bugun allaqachon belgilangan!"
-    cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=?", (xodim_id,))
+    cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=%s", (xodim_id,))
     xodim = cur.fetchone()
     kechikish = 0
     if xodim:
@@ -98,9 +107,10 @@ def keldi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
             pass
     cur.execute('''INSERT INTO davomat
         (xodim_id, sana, keldi, kechikish, kiritdi, kiritdi_id)
-        VALUES (?, ?, ?, ?, ?, ?)''',
+        VALUES (%s, %s, %s, %s, %s, %s)''',
         (xodim_id, sana, vaqt, kechikish, kiritdi, kiritdi_id))
     conn.commit()
+    cur.close()
     conn.close()
     if kechikish > 0:
         return f"✅ Keldi vaqti: {vaqt}\n⚠️ Kechikish: {kechikish_format(kechikish)}"
@@ -110,9 +120,10 @@ def keldi_rasm_saqlash(xodim_id, rasm_id):
     conn = connect()
     cur = conn.cursor()
     sana = datetime.now().strftime("%Y-%m-%d")
-    cur.execute("UPDATE davomat SET keldi_rasm=? WHERE xodim_id=? AND sana=?",
+    cur.execute("UPDATE davomat SET keldi_rasm=%s WHERE xodim_id=%s AND sana=%s",
                 (rasm_id, xodim_id, sana))
     conn.commit()
+    cur.close()
     conn.close()
 
 def ketdi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
@@ -120,9 +131,10 @@ def ketdi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
     cur = conn.cursor()
     sana = datetime.now().strftime("%Y-%m-%d")
     vaqt = datetime.now().strftime("%H:%M")
-    cur.execute("SELECT keldi FROM davomat WHERE xodim_id=? AND sana=?", (xodim_id, sana))
+    cur.execute("SELECT keldi FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
     row = cur.fetchone()
     if not row or not row[0]:
+        cur.close()
         conn.close()
         return "❌ Avval keldi belgilanmagan!"
     try:
@@ -136,10 +148,11 @@ def ketdi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
     except:
         ish_soat = 0
         ish_matn = "0 soat 0 daqiqa"
-    cur.execute('''UPDATE davomat SET ketdi=?, ish_soat=?, kiritdi=?, kiritdi_id=?
-                  WHERE xodim_id=? AND sana=?''',
+    cur.execute('''UPDATE davomat SET ketdi=%s, ish_soat=%s, kiritdi=%s, kiritdi_id=%s
+                  WHERE xodim_id=%s AND sana=%s''',
                 (vaqt, ish_soat, kiritdi, kiritdi_id, xodim_id, sana))
     conn.commit()
+    cur.close()
     conn.close()
     return f"🚪 Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {ish_matn}"
 
@@ -147,9 +160,10 @@ def ketdi_rasm_saqlash(xodim_id, rasm_id):
     conn = connect()
     cur = conn.cursor()
     sana = datetime.now().strftime("%Y-%m-%d")
-    cur.execute("UPDATE davomat SET ketdi_rasm=? WHERE xodim_id=? AND sana=?",
+    cur.execute("UPDATE davomat SET ketdi_rasm=%s WHERE xodim_id=%s AND sana=%s",
                 (rasm_id, xodim_id, sana))
     conn.commit()
+    cur.close()
     conn.close()
 
 def manual_davomat(xodim_id, sana, keldi_vaqt, ketdi_vaqt,
@@ -163,7 +177,7 @@ def manual_davomat(xodim_id, sana, keldi_vaqt, ketdi_vaqt,
         ketdi = datetime.strptime(ketdi_vaqt, "%H:%M")
         daqiqalar = int((ketdi - keldi).total_seconds() / 60)
         ish_soat = round(daqiqalar / 60, 2)
-        cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=?", (xodim_id,))
+        cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=%s", (xodim_id,))
         xodim = cur.fetchone()
         if xodim:
             belgi = datetime.strptime(xodim[0], "%H:%M")
@@ -171,21 +185,22 @@ def manual_davomat(xodim_id, sana, keldi_vaqt, ketdi_vaqt,
                 kechikish = int((keldi - belgi).total_seconds() / 60)
     except:
         pass
-    cur.execute("SELECT id FROM davomat WHERE xodim_id=? AND sana=?", (xodim_id, sana))
+    cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
     if cur.fetchone():
-        cur.execute('''UPDATE davomat SET keldi=?, ketdi=?, ish_soat=?,
-                      kechikish=?, holat=?, izoh=?, kiritdi=?, kiritdi_id=?
-                      WHERE xodim_id=? AND sana=?''',
+        cur.execute('''UPDATE davomat SET keldi=%s, ketdi=%s, ish_soat=%s,
+                      kechikish=%s, holat=%s, izoh=%s, kiritdi=%s, kiritdi_id=%s
+                      WHERE xodim_id=%s AND sana=%s''',
                     (keldi_vaqt, ketdi_vaqt, ish_soat, kechikish,
                      holat, izoh, kiritdi_ism, kiritdi_id, xodim_id, sana))
     else:
         cur.execute('''INSERT INTO davomat
                       (xodim_id, sana, keldi, ketdi, ish_soat,
                        kechikish, holat, izoh, kiritdi, kiritdi_id)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                     (xodim_id, sana, keldi_vaqt, ketdi_vaqt, ish_soat,
                      kechikish, holat, izoh, kiritdi_ism, kiritdi_id))
     conn.commit()
+    cur.close()
     conn.close()
     return "✅ Davomat kiritildi!"
 
@@ -194,12 +209,13 @@ def xodim_davomati(xodim_id, oy=None):
     cur = conn.cursor()
     if oy:
         cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
-                      FROM davomat WHERE xodim_id=? AND sana LIKE ?''',
+                      FROM davomat WHERE xodim_id=%s AND sana LIKE %s''',
                     (xodim_id, f"%{oy}%"))
     else:
         cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi
-                      FROM davomat WHERE xodim_id=?''', (xodim_id,))
+                      FROM davomat WHERE xodim_id=%s''', (xodim_id,))
     rows = cur.fetchall()
+    cur.close()
     conn.close()
     return rows
 
@@ -208,7 +224,7 @@ def excel_hisobot(kompaniya_id):
     cur = conn.cursor()
     cur.execute('''SELECT id, ism, lavozim, telefon, oylik,
                   ish_boshlanish, ish_tugash, rol
-                  FROM xodimlar WHERE kompaniya_id=?''', (kompaniya_id,))
+                  FROM xodimlar WHERE kompaniya_id=%s''', (kompaniya_id,))
     xodimlar = cur.fetchall()
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -219,7 +235,7 @@ def excel_hisobot(kompaniya_id):
     for x in xodimlar:
         cur.execute('''SELECT sana, keldi, ketdi, ish_soat, kechikish,
                       holat, izoh, kiritdi
-                      FROM davomat WHERE xodim_id=? ORDER BY sana''', (x[0],))
+                      FROM davomat WHERE xodim_id=%s ORDER BY sana''', (x[0],))
         davomatlar = cur.fetchall()
         if davomatlar:
             for d in davomatlar:
@@ -235,6 +251,7 @@ def excel_hisobot(kompaniya_id):
             ws.append([x[1], x[2], x[3], x[4],
                       f"{x[5]}-{x[6]}", x[7],
                       "—", "—", "—", "—", "—", "—", "—", "—"])
+    cur.close()
     conn.close()
     fayl = "hisobot.xlsx"
     wb.save(fayl)
