@@ -1323,6 +1323,19 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if matn == "✅ Keldim":
+        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+
+        if wifi_aktiv and wifi_ssid:  # WiFi aniqlash aktiv
+            await update.message.reply_text(
+                f"📡 *WiFi ANIQLASH*\n\n"
+                f"Ish joyi WiFi-ga ('*{wifi_ssid}*') ulanganmisiz?\n\n"
+                f"📡 Ulangan → avtamatik Keldim\n"
+                f"📍 Ulanmagan → GPS kerak",
+                parse_mode='Markdown',
+                reply_markup=xod_wifi_kb())
+            context.user_data['wifi_waiting'] = True
+            return XOD_MENU
+
         if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
             if komp[14]:  # Live GPS REQUIRED
                 btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
@@ -1359,6 +1372,19 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_KELDI_RASM
 
     elif matn == "🚪 Ketdim":
+        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+
+        if wifi_aktiv and wifi_ssid:  # WiFi aniqlash aktiv
+            await update.message.reply_text(
+                f"📡 *WiFi ANIQLASH*\n\n"
+                f"Ish joyi WiFi-ga ('*{wifi_ssid}*') ulanganmisiz?\n\n"
+                f"📡 Ulangan → avtamatik Ketdim\n"
+                f"📍 Ulanmagan → GPS kerak",
+                parse_mode='Markdown',
+                reply_markup=xod_wifi_kb())
+            context.user_data['wifi_waiting_ketdi'] = True
+            return XOD_MENU
+
         if komp[9] or komp[14]:
             if komp[14]:  # Live GPS REQUIRED
                 btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
@@ -1446,6 +1472,54 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matn == "📝 Sababli so'rov":
         await update.message.reply_text("📅 Qaysi kun? (YYYY-MM-DD):", reply_markup=ReplyKeyboardRemove())
         return XOD_SABAB_SANA
+
+    elif matn == "📡 WiFi ulangan":
+        xodim_id = context.user_data.get('xodim_id')
+        komp_id = context.user_data.get('komp_id')
+        komp = kompaniya_olish(komp_id)
+
+        if context.user_data.get('wifi_waiting'):
+            # Keldim WiFi bilan
+            natija = keldi_belgilash(xodim_id, komp_id)
+            if natija == "already":
+                await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
+                return XOD_MENU
+            _, vaqt, kechikish = natija.split("|")
+            msg = f"✅ Keldi vaqti: {vaqt}"
+            if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+            msg += "\n\n📡 WiFi orqali qabul qilindi!"
+
+            # AUDIT LOG
+            user_id = update.effective_user.id
+            user_ism = update.effective_user.first_name or 'Xodim'
+            audit_log_qoshish(komp_id, 'KELDI', f"WiFi orqali: {vaqt}", xodim_id, None, None, user_id, user_ism)
+
+            await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, None, True)
+            await update.message.reply_text(msg, reply_markup=xod_menu_kb())
+            context.user_data['wifi_waiting'] = False
+            return XOD_MENU
+
+        elif context.user_data.get('wifi_waiting_ketdi'):
+            # Ketdi WiFi bilan
+            natija = ketdi_belgilash(xodim_id, komp_id)
+            if natija == "nokeldi":
+                await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
+                return XOD_MENU
+            _, vaqt, ish_soat, ish_tugash = natija.split("|")
+            xodim = xodim_olish(xodim_id)
+            s = int(float(ish_soat)); d = int((float(ish_soat) - s) * 60)
+            msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa\n\n📡 WiFi orqali qabul qilindi!"
+
+            # AUDIT LOG
+            user_id = update.effective_user.id
+            user_ism = update.effective_user.first_name or 'Xodim'
+            audit_log_qoshish(komp_id, 'KETDI', f"WiFi orqali: {vaqt}", xodim_id, None, None, user_id, user_ism)
+
+            await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, None, True)
+            await update.message.reply_text(msg, reply_markup=xod_menu_kb())
+            context.user_data['wifi_waiting_ketdi'] = False
+            live_lokatsiya_ochirish(xodim_id)
+            return XOD_MENU
 
     elif matn == "🏠 Bosh menu":
         await update.message.reply_text("👋 Menu:", reply_markup=xod_menu_kb())
