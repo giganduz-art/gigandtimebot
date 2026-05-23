@@ -254,6 +254,40 @@ def wifi_sozla(komp_id, aktiv, ssid):
     cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s WHERE id=%s", (aktiv, ssid, komp_id))
     conn.commit(); cur.close(); conn.close()
 
+def komp_bugun_rasmlar(komp_id):
+    """Kompaniya xodimlarining bugungi barcha rasmlari"""
+    conn = connect(); cur = conn.cursor()
+    sana = hozir().strftime("%Y-%m-%d")
+    cur.execute('''SELECT x.id, x.ism, d.keldi_rasm
+                   FROM davomat d
+                   JOIN xodimlar x ON d.xodim_id=x.id
+                   WHERE d.sana=%s AND x.komp_id=%s AND d.keldi_rasm IS NOT NULL
+                   ORDER BY d.keldi DESC''', (sana, komp_id))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
+
+def komp_bugun_videolar(komp_id):
+    """Kompaniya xodimlarining bugungi barcha videolari"""
+    conn = connect(); cur = conn.cursor()
+    sana = hozir().strftime("%Y-%m-%d")
+    cur.execute('''SELECT x.id, x.ism, d.ketdi_rasm
+                   FROM davomat d
+                   JOIN xodimlar x ON d.xodim_id=x.id
+                   WHERE d.sana=%s AND x.komp_id=%s AND d.ketdi_rasm IS NOT NULL
+                   ORDER BY d.ketdi DESC''', (sana, komp_id))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
+
+def barcha_komp_bugun_rasmlar():
+    """Barcha kompaniyalarning bugungi rasmlari (super admin uchun)"""
+    conn = connect(); cur = conn.cursor()
+    sana = hozir().strftime("%Y-%m-%d")
+    cur.execute('''SELECT x.ism, k.nomi, d.keldi_rasm
+                   FROM davomat d
+                   JOIN xodimlar x ON d.xodim_id=x.id
+                   JOIN kompaniyalar k ON x.komp_id=k.id
+                   WHERE d.sana=%s AND d.keldi_rasm IS NOT NULL
+                   ORDER BY d.keldi DESC''', (sana,))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
+
 # ========== XODIMLAR ==========
 
 def xodim_qoshish(ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol, kod):

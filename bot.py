@@ -85,7 +85,7 @@ def sa_menu_kb():
     return ReplyKeyboardMarkup([
         ["🏢 Kompaniyalar", "👑 Super Adminlar"],
         ["📊 Umumiy hisobot", "📋 Audit Log"],
-        ["🔐 Sozlamalar"],
+        ["📸 Barcha rasmlar", "🔐 Sozlamalar"],
     ], resize_keyboard=True)
 
 def adm_menu_kb():
@@ -93,7 +93,7 @@ def adm_menu_kb():
         ["👥 Xodimlar", "📅 Davomat"],
         ["📊 Hisobot", "📍 GPS sozlash"],
         ["📡 WiFi sozlash", "📋 Audit Log"],
-        ["🏠 Bosh menu"]
+        ["📸 Rasm log", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
 def hr_menu_kb():
@@ -269,6 +269,31 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔔 BARCHA kompaniyalarning hisoboti ko'rsatiladi!",
             reply_markup=ReplyKeyboardRemove())
         return SA_HISOBOT_SANA
+
+    elif matn == "📸 Barcha rasmlar":
+        rasmlar = barcha_komp_bugun_rasmlar()
+        if not rasmlar:
+            await update.message.reply_text(
+                "📸 Bugun rasmlar yo'q.",
+                reply_markup=sa_menu_kb())
+            return SA_MENU
+
+        await update.message.reply_text(
+            f"📸 *Barcha kompaniyalarning bugungi rasmlari* ({len(rasmlar)}ta):\n\n"
+            "Rasmlar yuborilmoqda...",
+            parse_mode='Markdown')
+
+        for ism, komp, rasm_id in rasmlar:
+            try:
+                await update.message.reply_photo(
+                    rasm_id,
+                    caption=f"🏢 {komp}\n👤 {ism}",
+                    parse_mode='Markdown')
+            except:
+                pass
+
+        await update.message.reply_text("✅ Tayyor!", reply_markup=sa_menu_kb())
+        return SA_MENU
 
     elif matn == "📋 Audit Log":
         logs = super_admin_audit_log(limit=20)
@@ -859,6 +884,32 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(xabar, parse_mode='Markdown',
                 reply_markup=ReplyKeyboardMarkup([["📥 Export Excel", "🔙 Orqaga"]], resize_keyboard=True))
         context.user_data['audit_view'] = 'adm'
+        return ADM_MENU
+
+    elif matn == "📸 Rasm log":
+        komp_id = context.user_data.get('komp_id')
+        rasmlar = komp_bugun_rasmlar(komp_id)
+        if not rasmlar:
+            await update.message.reply_text(
+                "📸 Bugun rasmlar yo'q.",
+                reply_markup=adm_menu_kb())
+            return ADM_MENU
+
+        await update.message.reply_text(
+            f"📸 *Bugungi rasmlar* ({len(rasmlar)}ta):\n\n"
+            "Rasmlar yuborilmoqda...",
+            parse_mode='Markdown')
+
+        for xodim_id, ism, rasm_id in rasmlar:
+            try:
+                await update.message.reply_photo(
+                    rasm_id,
+                    caption=f"👤 {ism}",
+                    parse_mode='Markdown')
+            except:
+                pass
+
+        await update.message.reply_text("✅ Tayyor!", reply_markup=adm_menu_kb())
         return ADM_MENU
 
     elif matn == "📥 Export Excel" and context.user_data.get('audit_view') == 'adm':
