@@ -255,37 +255,40 @@ def wifi_sozla(komp_id, aktiv, ssid):
     conn.commit(); cur.close(); conn.close()
 
 def komp_bugun_rasmlar(komp_id):
-    """Kompaniya xodimlarining bugungi barcha rasmlari"""
+    """Kompaniya xodimlarining bugungi barcha rasmlari - to'liq ma'lumot bilan"""
     conn = connect(); cur = conn.cursor()
     sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''SELECT x.id, x.ism, d.keldi_rasm
+    cur.execute('''SELECT x.id, x.ism, x.lavozim, d.keldi, d.keldi_rasm, a.tafsilot
                    FROM davomat d
                    JOIN xodimlar x ON d.xodim_id=x.id
+                   LEFT JOIN audit_log a ON a.xodim_id=x.id AND a.amal='KELDI' AND DATE(a.vaqt)=%s
                    WHERE d.sana=%s AND x.komp_id=%s AND d.keldi_rasm IS NOT NULL
-                   ORDER BY d.keldi DESC''', (sana, komp_id))
+                   ORDER BY d.keldi DESC''', (sana, sana, komp_id))
     r = cur.fetchall(); cur.close(); conn.close(); return r
 
 def komp_bugun_videolar(komp_id):
-    """Kompaniya xodimlarining bugungi barcha videolari"""
+    """Kompaniya xodimlarining bugungi barcha videolari - to'liq ma'lumot bilan"""
     conn = connect(); cur = conn.cursor()
     sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''SELECT x.id, x.ism, d.ketdi_rasm
+    cur.execute('''SELECT x.id, x.ism, x.lavozim, d.ketdi, d.ketdi_rasm, a.tafsilot
                    FROM davomat d
                    JOIN xodimlar x ON d.xodim_id=x.id
+                   LEFT JOIN audit_log a ON a.xodim_id=x.id AND a.amal='KETDI' AND DATE(a.vaqt)=%s
                    WHERE d.sana=%s AND x.komp_id=%s AND d.ketdi_rasm IS NOT NULL
-                   ORDER BY d.ketdi DESC''', (sana, komp_id))
+                   ORDER BY d.ketdi DESC''', (sana, sana, komp_id))
     r = cur.fetchall(); cur.close(); conn.close(); return r
 
 def barcha_komp_bugun_rasmlar():
-    """Barcha kompaniyalarning bugungi rasmlari (super admin uchun)"""
+    """Barcha kompaniyalarning bugungi rasmlari - super admin uchun - to'liq ma'lumot"""
     conn = connect(); cur = conn.cursor()
     sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''SELECT x.ism, k.nomi, d.keldi_rasm
+    cur.execute('''SELECT k.nomi, x.ism, x.lavozim, d.keldi, d.keldi_rasm, a.tafsilot
                    FROM davomat d
                    JOIN xodimlar x ON d.xodim_id=x.id
                    JOIN kompaniyalar k ON x.komp_id=k.id
+                   LEFT JOIN audit_log a ON a.xodim_id=x.id AND a.amal='KELDI' AND DATE(a.vaqt)=%s
                    WHERE d.sana=%s AND d.keldi_rasm IS NOT NULL
-                   ORDER BY d.keldi DESC''', (sana,))
+                   ORDER BY d.keldi DESC''', (sana, sana))
     r = cur.fetchall(); cur.close(); conn.close(); return r
 
 # ========== XODIMLAR ==========

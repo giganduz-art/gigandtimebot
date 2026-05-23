@@ -283,11 +283,14 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Rasmlar yuborilmoqda...",
             parse_mode='Markdown')
 
-        for ism, komp, rasm_id in rasmlar:
+        for komp, ism, lavozim, vaqt, rasm_id, tafsilot in rasmlar:
             try:
+                caption = f"🏢 *{komp}*\n👤 {ism}\n💼 {lavozim}\n⏰ {vaqt}"
+                if tafsilot:
+                    caption += f"\n✅ {tafsilot}"
                 await update.message.reply_photo(
                     rasm_id,
-                    caption=f"🏢 {komp}\n👤 {ism}",
+                    caption=caption,
                     parse_mode='Markdown')
             except:
                 pass
@@ -900,11 +903,14 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Rasmlar yuborilmoqda...",
             parse_mode='Markdown')
 
-        for xodim_id, ism, rasm_id in rasmlar:
+        for xodim_id, ism, lavozim, vaqt, rasm_id, tafsilot in rasmlar:
             try:
+                caption = f"👤 *{ism}*\n💼 {lavozim}\n⏰ {vaqt}"
+                if tafsilot:
+                    caption += f"\n✅ {tafsilot}"
                 await update.message.reply_photo(
                     rasm_id,
-                    caption=f"👤 {ism}",
+                    caption=caption,
                     parse_mode='Markdown')
             except:
                 pass
