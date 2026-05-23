@@ -1,10 +1,12 @@
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
+import pytz
 import openpyxl
 import os
 
 ADMIN_TELEFON = "919712222"
+TASHKENT = pytz.timezone('Asia/Tashkent')
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -13,6 +15,9 @@ DATABASE_URL = os.environ.get(
 
 def connect():
     return psycopg2.connect(DATABASE_URL)
+
+def hozir():
+    return datetime.now(TASHKENT)
 
 def soat_format(soat_decimal):
     soat = int(float(soat_decimal or 0))
@@ -87,8 +92,8 @@ def create_tables():
 def keldi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
     conn = connect()
     cur = conn.cursor()
-    sana = datetime.now().strftime("%Y-%m-%d")
-    vaqt = datetime.now().strftime("%H:%M")
+    sana = hozir().strftime("%Y-%m-%d")
+    vaqt = hozir().strftime("%H:%M")
     cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
     if cur.fetchone():
         cur.close()
@@ -100,9 +105,9 @@ def keldi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
     if xodim:
         try:
             belgi = datetime.strptime(xodim[0], "%H:%M")
-            hozir = datetime.strptime(vaqt, "%H:%M")
-            if hozir > belgi:
-                kechikish = int((hozir - belgi).total_seconds() / 60)
+            keldi_v = datetime.strptime(vaqt, "%H:%M")
+            if keldi_v > belgi:
+                kechikish = int((keldi_v - belgi).total_seconds() / 60)
         except:
             pass
     cur.execute('''INSERT INTO davomat
@@ -119,7 +124,7 @@ def keldi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
 def keldi_rasm_saqlash(xodim_id, rasm_id):
     conn = connect()
     cur = conn.cursor()
-    sana = datetime.now().strftime("%Y-%m-%d")
+    sana = hozir().strftime("%Y-%m-%d")
     cur.execute("UPDATE davomat SET keldi_rasm=%s WHERE xodim_id=%s AND sana=%s",
                 (rasm_id, xodim_id, sana))
     conn.commit()
@@ -129,8 +134,8 @@ def keldi_rasm_saqlash(xodim_id, rasm_id):
 def ketdi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
     conn = connect()
     cur = conn.cursor()
-    sana = datetime.now().strftime("%Y-%m-%d")
-    vaqt = datetime.now().strftime("%H:%M")
+    sana = hozir().strftime("%Y-%m-%d")
+    vaqt = hozir().strftime("%H:%M")
     cur.execute("SELECT keldi FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
     row = cur.fetchone()
     if not row or not row[0]:
@@ -159,7 +164,7 @@ def ketdi_belgilash(xodim_id, kiritdi="xodim", kiritdi_id=None):
 def ketdi_rasm_saqlash(xodim_id, rasm_id):
     conn = connect()
     cur = conn.cursor()
-    sana = datetime.now().strftime("%Y-%m-%d")
+    sana = hozir().strftime("%Y-%m-%d")
     cur.execute("UPDATE davomat SET ketdi_rasm=%s WHERE xodim_id=%s AND sana=%s",
                 (rasm_id, xodim_id, sana))
     conn.commit()
