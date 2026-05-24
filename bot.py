@@ -811,12 +811,13 @@ async def sa_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ Xatolik: Ma'lumot yo'q!", reply_markup=sa_menu_kb())
             return SA_MENU
 
-        xodim_ochirish(xodim_id)
-
-        # AUDIT LOG
+        # AUDIT LOG - FIRST (before delete!)
         user_ism = update.effective_user.first_name or 'Super Admin'
         tafsilot = f"Xodim o'chirildi: {xodim_ism}"
         audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+        # Then delete xodim
+        xodim_ochirish(xodim_id)
 
         # Show xodim list again
         xodimlar = kompaniya_xodimlari(komp_id)
@@ -1254,13 +1255,13 @@ async def adm_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=adm_menu_kb())
             return ADM_MENU
 
-        # Kod to'g'ri, xodimni o'chir
-        xodim_ochirish(xodim_id)
-
-        # AUDIT LOG
+        # AUDIT LOG - FIRST (before delete!)
         user_ism = update.effective_user.first_name or 'Admin'
         tafsilot = f"Xodim o'chirildi: {xodim_ism}"
         audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+        # Then delete xodim
+        xodim_ochirish(xodim_id)
 
         # Show updated xodim list with sequential numbering
         xodimlar = kompaniya_xodimlari(komp_id)
