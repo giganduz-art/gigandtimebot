@@ -1996,6 +1996,12 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ {xodim_ism} uchun bu davomatda ma'lumot topilmadi!", reply_markup=hr_menu_kb())
             return HR_MENU
 
+        # DEBUG: Log what we're getting from database
+        print(f"DEBUG HR_VIEW: xodim_id={xodim_id}, records={len(davomatlar)}")
+        if davomatlar:
+            print(f"DEBUG HR_VIEW: First record fields count: {len(davomatlar[0])}")
+            print(f"DEBUG HR_VIEW: First record data: {davomatlar[0]}")
+
         xabar = f"📋 *{xodim_ism} Davomati*\n\n"
 
         for dav in davomatlar:
@@ -2397,6 +2403,10 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
     # Takrorlanmasin
     barcha = list(set(([admin_id] if admin_id else []) + hr_list + sa_list))
     logger.info(f"_admin_xabar: {tur} | xodim={xodim[1]} | recipients={barcha} | rasm_id={rasm_id}")
+
+    # SECURITY: Build HR list to avoid sending media to HR
+    hr_set = set(hr_list)
+
     for aid in barcha:
         # FIX 4+5: Matn va rasm uchun alohida try-except — biri xato bo'lsa ikkinchisi ishlaydi
         try:
@@ -2410,7 +2420,9 @@ async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=
                 await context.bot.send_message(aid, xabar_oddiy)
             except Exception as e2:
                 logger.error(f"Oddiy matn ham yuborilmadi (chat_id={aid}): {e2}")
-        if rasm_id:
+
+        # SECURITY: Send photos/videos ONLY to Admin and Super Admin, NOT to HR
+        if rasm_id and aid not in hr_set:
             try:
                 if foto:
                     await context.bot.send_photo(aid, rasm_id)
