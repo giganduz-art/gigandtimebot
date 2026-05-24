@@ -1589,22 +1589,11 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_MENU
 
         if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
-            if komp[14]:  # Live GPS REQUIRED
-                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
-                await update.message.reply_text(
-                    "🚨 *LIVE LOKATSIYA KERAK!*\n\n"
-                    "1️⃣ Lokatsiya tugmasini bosing\n"
-                    "2️⃣ Telegram-da '📍 Real vaqt lokatsiyasi' ni tanlang\n"
-                    "3️⃣ Doimiy ishlaydi (ketdi belgilagunga qadar)\n\n"
-                    "⚠️ Oddiy lokatsiya QABUL QILINMAYDI!",
-                    parse_mode='Markdown',
-                    reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
-            else:
-                btn = [[KeyboardButton("📍 Lokatsiya yuborish", request_location=True)]]
-                await update.message.reply_text(
-                    "📍 Joylashuvingizni yuboring:",
-                    parse_mode='Markdown',
-                    reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+            btn = [[KeyboardButton("📍 Joylashuvni yuboring", request_location=True)]]
+            await update.message.reply_text(
+                "📍 Joylashuvingizni yuboring:",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
             return XOD_KELDI_GPS
         else:
             # GPS o'chirilgan, lekin selfie kerak
@@ -1638,20 +1627,9 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_MENU
 
         if komp[9] or komp[14]:
-            if komp[14]:  # Live GPS REQUIRED
-                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
-                await update.message.reply_text(
-                    "🚨 *LIVE LOKATSIYA KERAK!*\n\n"
-                    "1️⃣ Lokatsiya tugmasini bosing\n"
-                    "2️⃣ Telegram-da '📍 Real vaqt lokatsiyasi' ni tanlang\n"
-                    "3️⃣ Doimiy ishlaydi (ketdi belgilagunga qadar)\n\n"
-                    "⚠️ Oddiy lokatsiya QABUL QILINMAYDI!",
-                    parse_mode='Markdown',
-                    reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
-            else:
-                btn = [[KeyboardButton("📍 Lokatsiya yuborish", request_location=True)]]
-                await update.message.reply_text("📍 Joylashuvingizni yuboring:",
-                    reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+            btn = [[KeyboardButton("📍 Joylashuvni yuboring", request_location=True)]]
+            await update.message.reply_text("📍 Joylashuvingizni yuboring:",
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
             return XOD_KETDI_GPS
         else:
             natija = ketdi_belgilash(xodim_id, komp_id)
