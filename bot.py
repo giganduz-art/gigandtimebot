@@ -1,4 +1,4 @@
-import os, math, logging, random, string
+import os, math, logging, random, string, threading
 from datetime import datetime, time as dtime, timedelta
 import pytz
 from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
@@ -2434,6 +2434,15 @@ def main():
     jq.run_daily(haftalik_hisobot_job,
                  time=dtime(hour=18, minute=0, second=0, tzinfo=TASHKENT),
                  days=(4,))  # 4 = Juma
+
+    # Start Flask in a background thread
+    port = os.environ.get("PORT", 8080)
+    flask_thread = threading.Thread(
+        target=lambda: flask_app.run(host='0.0.0.0', port=int(port), debug=False, use_reloader=False),
+        daemon=True
+    )
+    flask_thread.start()
+    print(f"Flask started on port {port}")
 
     print("Bot ishlamoqda...")
     app.run_polling(drop_pending_updates=True)
