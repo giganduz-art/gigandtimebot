@@ -7,7 +7,6 @@ from telegram.ext import (Application, CommandHandler, MessageHandler,
                           CallbackQueryHandler, ConversationHandler, filters, ContextTypes)
 from database import *
 from flask import Flask, render_template, request, jsonify
-from threading import Thread
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -863,20 +862,30 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_GPS_LOK
 
     elif matn == "📡 WiFi sozlash":
-        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
+        wifi_aktiv, wifi_ssid, _ = get_wifi(komp_id)
+        macs = wifi_mac_olish(komp_id)
         holat = "✅ YONIQ" if wifi_aktiv else "❌ OCHIQ"
+
+        mac_list = "📡 *WiFi MAC Manzillari:*\n"
+        if macs:
+            for i, (mac_id, mac, nomi) in enumerate(macs, 1):
+                mac_list += f"{i}. {mac} {f'({nomi})' if nomi else ''}\n"
+        else:
+            mac_list += "(hech qanday MAC yo'q)\n"
+
         await update.message.reply_text(
             f"📡 *WiFi Sozlamalari*\n\n"
             f"Holati: {holat}\n"
-            f"📡 SSID: {wifi_ssid if wifi_ssid else '(belgilanmagan)'}\n"
-            f"🔗 MAC Manzili: {wifi_mac if wifi_mac else '(belgilanmagan)'}\n\n"
+            f"📡 SSID: {wifi_ssid if wifi_ssid else '(belgilanmagan)'}\n\n"
+            f"{mac_list}\n"
             f"Qanday qilish kerak?",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["✅ Yoqish", "❌ O'chirish"],
-                ["✏️ SSID nomini o'zgartirish", "✏️ MAC manzilini o'zgartirish"],
-                ["🔙 Orqaga"]
+                ["✏️ SSID o'zgartirish", "➕ MAC qo'shish"],
+                ["📋 MAC ro'yxati", "🔙 Orqaga"]
             ], resize_keyboard=True))
+        context.user_data['wifi_macs'] = macs
         return ADM_WIFI_AKTIV
 
     elif matn == "📋 Audit Log":
@@ -2311,9 +2320,8 @@ def wifi_verify():
     except Exception as e:
         return jsonify({'status': 'error', 'message': f'❌ Server xatosi: {str(e)}'})
 
-def run_flask():
-    port = int(os.environ.get('PORT', 5000))
-    flask_app.run(host='0.0.0.0', port=port, debug=False)
+# Flask app will be run by Gunicorn in production
+# (no need to run it manually here)
 
 # ==================== MAIN ====================
 
@@ -2422,11 +2430,6 @@ def main():
     jq.run_daily(haftalik_hisobot_job,
                  time=dtime(hour=18, minute=0, second=0, tzinfo=TASHKENT),
                  days=(4,))  # 4 = Juma
-
-    # Flask serverini background thread'da ishla
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    print("Flask server ishlamoqda port 5000 da...")
 
     print("Bot ishlamoqda...")
     app.run_polling(drop_pending_updates=True)
