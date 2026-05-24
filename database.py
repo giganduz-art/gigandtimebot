@@ -1,4 +1,4 @@
-import psycopg
+import psycopg2
 from datetime import datetime, timedelta
 import pytz
 import openpyxl
@@ -12,7 +12,7 @@ DATABASE_URL = os.environ.get(
 )
 
 def connect():
-    return psycopg.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL)
 
 def hozir():
     return datetime.now(TASHKENT)
