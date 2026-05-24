@@ -2279,12 +2279,13 @@ def wifi_verify():
         if not all([xodim_id, komp_id, wifi_mac]):
             return jsonify({'status': 'error', 'message': '❌ Ma\'lumot to\'liq emas!'})
 
-        wifi_aktiv, komp_mac = get_wifi_mac(int(komp_id))
+        wifi_aktiv, komp_ssid = get_wifi_mac(int(komp_id))
 
-        if not wifi_aktiv or not komp_mac:
+        if not wifi_aktiv:
             return jsonify({'status': 'error', 'message': '❌ Tashkilotning WiFi sozlamalari yo\'q!'})
 
-        mac_match = wifi_mac.upper() == (komp_mac or '').upper()
+        # Bir nechta MAC ro'yxatini tekshirish
+        mac_match = wifi_mac_tekshir(int(komp_id), wifi_mac)
 
         if mac_match:
             try:

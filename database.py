@@ -103,6 +103,11 @@ def create_tables():
         user_id BIGINT, user_ism TEXT
     )''')
 
+    cur.execute('''CREATE TABLE IF NOT EXISTS wifi_macs (
+        id SERIAL PRIMARY KEY, kompaniya_id INTEGER REFERENCES kompaniyalar(id),
+        mac_address TEXT NOT NULL, nomi TEXT DEFAULT ''
+    )''')
+
     conn.commit(); cur.close(); conn.close()
 
 # ========== SOZLAMALAR ==========
@@ -271,6 +276,40 @@ def wifi_sozla(komp_id, aktiv, ssid, mac=""):
     conn = connect(); cur = conn.cursor()
     cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s,wifi_mac=%s WHERE id=%s",
                 (aktiv, ssid, mac, komp_id))
+    conn.commit(); cur.close(); conn.close()
+
+def wifi_mac_qosh(komp_id, mac_address, nomi=""):
+    """WiFi MAC manzilini qo'shish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("INSERT INTO wifi_macs(kompaniya_id, mac_address, nomi) VALUES(%s, %s, %s)",
+                (komp_id, mac_address.upper(), nomi))
+    conn.commit(); cur.close(); conn.close()
+
+def wifi_mac_olish(komp_id):
+    """Kompaniyaning barcha WiFi MAC manzillarini olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id, mac_address, nomi FROM wifi_macs WHERE kompaniya_id=%s ORDER BY id", (komp_id,))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r if r else []
+
+def wifi_mac_tekshir(komp_id, mac_address):
+    """MAC manzil kompaniya ro'yxatida bor-yo'qligini tekshirish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id FROM wifi_macs WHERE kompaniya_id=%s AND UPPER(mac_address)=%s",
+                (komp_id, mac_address.upper()))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return r is not None
+
+def wifi_mac_ochir(mac_id):
+    """WiFi MAC manzilini o'chirish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("DELETE FROM wifi_macs WHERE id=%s", (mac_id,))
+    conn.commit(); cur.close(); conn.close()
+
+def wifi_mac_tahrir(mac_id, nomi):
+    """WiFi MAC nomini tahrirlash"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("UPDATE wifi_macs SET nomi=%s WHERE id=%s", (nomi, mac_id))
     conn.commit(); cur.close(); conn.close()
 
 def komp_bugun_rasmlar(komp_id):
