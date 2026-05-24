@@ -1521,7 +1521,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
             if komp[14]:  # Live GPS REQUIRED
-                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_live_location=True)]]
+                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
                 await update.message.reply_text(
                     "🚨 *LIVE LOKATSIYA KERAK!*\n\n"
                     "1️⃣ Lokatsiya tugmasini bosing\n"
@@ -1570,7 +1570,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if komp[9] or komp[14]:
             if komp[14]:  # Live GPS REQUIRED
-                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_live_location=True)]]
+                btn = [[KeyboardButton("📡 LIVE lokatsiya yuborish (DOIMIY)", request_location=True)]]
                 await update.message.reply_text(
                     "🚨 *LIVE LOKATSIYA KERAK!*\n\n"
                     "1️⃣ Lokatsiya tugmasini bosing\n"
