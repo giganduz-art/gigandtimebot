@@ -1494,7 +1494,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if matn == "✅ Keldim":
-        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
 
         if wifi_aktiv and wifi_ssid:  # WiFi IP Adres aktiv
             await update.message.reply_text(
@@ -1543,7 +1543,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_KELDI_RASM
 
     elif matn == "🚪 Ketdim":
-        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
 
         if wifi_aktiv and wifi_ssid:  # WiFi IP Adres aktiv
             await update.message.reply_text(
