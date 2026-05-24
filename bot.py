@@ -2,7 +2,7 @@ import os, math, logging, random, string
 from datetime import datetime, time as dtime, timedelta
 import pytz
 from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
-                      InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove)
+                      InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, WebAppInfo)
 from telegram.ext import (Application, CommandHandler, MessageHandler,
                           CallbackQueryHandler, ConversationHandler, filters, ContextTypes)
 from database import *
@@ -109,14 +109,14 @@ def xod_menu_kb():
     ], resize_keyboard=True)
 
 def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
-    """WiFi prompt inline keyboard with web form"""
+    """WiFi prompt with Telegram WebApp"""
     base_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'gigandtimebot.railway.app')
     if not base_url.startswith('http'):
         base_url = 'https://' + base_url
-    wifi_form_url = f"{base_url}/wifi-check?user_id=&komp_id={komp_id}&amal={amal}&xodim_id={xodim_id}"
+    wifi_app_url = f"{base_url}/wifi-app?xodim_id={xodim_id}&komp_id={komp_id}&amal={amal}"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔗 WiFi tekshir", url=wifi_form_url),
-         InlineKeyboardButton("📍 GPS kerak", callback_data=f"gps_{amal}_{komp_id}")],
+        [InlineKeyboardButton("📡 WiFi tekshir", web_app=WebAppInfo(url=wifi_app_url))],
+        [InlineKeyboardButton("📍 GPS kerak", callback_data=f"gps_{amal}_{komp_id}")],
         [InlineKeyboardButton("🏠 Orqaga", callback_data="xod_menu")]
     ])
 
@@ -2263,6 +2263,10 @@ async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 flask_app = Flask(__name__, template_folder=template_dir)
+
+@flask_app.route('/wifi-app')
+def wifi_app():
+    return render_template('wifi_app.html')
 
 @flask_app.route('/wifi-check', methods=['GET'])
 def wifi_check_page():

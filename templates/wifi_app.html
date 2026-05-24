@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>📡 WiFi Tekshiruvi</title>
+    <script src="https://web.telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', Arial, sans-serif;
+            background: var(--tg-color-bg);
+            color: var(--tg-color-text);
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            margin-top: 16px;
+        }
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .header p {
+            font-size: 13px;
+            opacity: 0.7;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--tg-color-hint);
+            border-radius: 6px;
+            font-size: 14px;
+            background: var(--tg-color-bg-secondary);
+            color: var(--tg-color-text);
+            font-family: monospace;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--tg-color-text);
+        }
+        .status {
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            display: none;
+        }
+        .status.success {
+            background: #31a24c;
+            color: white;
+        }
+        .status.error {
+            background: #e55039;
+            color: white;
+        }
+        .status.loading {
+            background: var(--tg-color-bg-secondary);
+            color: var(--tg-color-text);
+        }
+        .info-box {
+            background: var(--tg-color-bg-secondary);
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 20px;
+        }
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-submit {
+            background: var(--tg-color-button);
+            color: var(--tg-color-button-text);
+        }
+        .btn-submit:active {
+            opacity: 0.8;
+        }
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-cancel {
+            background: var(--tg-color-bg-secondary);
+            color: var(--tg-color-text);
+        }
+        .btn-cancel:active {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📡 WiFi Tekshiruvi</h1>
+            <p>MAC manzilni kiriting</p>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="info-box">
+            📌 Ish joyi WiFi-ning MAC manzilini kiriting yoki Android-da avtomatik aniqlang.
+        </div>
+
+        <form id="wifiForm">
+            <div class="form-group">
+                <label for="wifi_mac">MAC Manzili:</label>
+                <input type="text" id="wifi_mac" name="wifi_mac"
+                       placeholder="Masalan: 00:1A:2B:3C:4D:5E"
+                       required autocomplete="off">
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn-cancel" id="cancelBtn">Bekor qil</button>
+                <button type="submit" class="btn-submit" id="submitBtn">Tasdiqlash</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const wifiForm = document.getElementById('wifiForm');
+        const statusDiv = document.getElementById('status');
+        const submitBtn = document.getElementById('submitBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const macInput = document.getElementById('wifi_mac');
+
+        // Telegram WebApp-ni initialize qil
+        tg.ready();
+        tg.expand();
+
+        // Fon rangini o'zgartirib beraymi
+        tg.setBackgroundColor("#ffffff");
+
+        // WebApp initData-dan parametrlarni ol
+        const initData = tg.initData;
+        const startParam = tg.startParam;
+
+        // URL parametrlarini parse qil
+        let xodim_id, komp_id, amal;
+        if (startParam) {
+            const params = new URLSearchParams(startParam);
+            xodim_id = params.get('xodim_id');
+            komp_id = params.get('komp_id');
+            amal = params.get('amal') || 'keldim';
+        }
+
+        // Android WebView-dan MAC-ni avtomatik aniqlash
+        window.addEventListener('load', () => {
+            detectWiFiInfo();
+        });
+
+        async function detectWiFiInfo() {
+            try {
+                if (window.android && window.android.getWiFiMAC) {
+                    const mac = window.android.getWiFiMAC();
+                    if (mac) {
+                        macInput.value = mac.toUpperCase();
+                    }
+                }
+            } catch (e) {
+                console.log('WiFi auto-detect error:', e);
+            }
+        }
+
+        cancelBtn.addEventListener('click', () => {
+            tg.close();
+        });
+
+        wifiForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const mac = macInput.value.trim().toUpperCase();
+
+            if (!mac) {
+                showStatus('❌ MAC manzilini kiriting!', 'error');
+                return;
+            }
+
+            // MAC format tekshir (XX:XX:XX:XX:XX:XX)
+            if (!/^([0-9A-F]{2}:){5}([0-9A-F]{2})$/.test(mac)) {
+                showStatus('❌ MAC manzil noto\'g\'ri format!', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            showStatus('⏳ Tekshirilmoqda...', 'loading');
+
+            try {
+                const response = await fetch('/wifi-verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        xodim_id: xodim_id,
+                        komp_id: komp_id,
+                        wifi_mac: mac,
+                        amal: amal,
+                        web_app_data: initData
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showStatus(data.message, 'success');
+                    setTimeout(() => {
+                        tg.close();
+                    }, 1500);
+                } else if (data.status === 'failed') {
+                    showStatus('❌ MAC mos kelmadi\n📍 GPS kerak', 'error');
+                    submitBtn.disabled = false;
+                } else {
+                    showStatus(data.message, 'error');
+                    submitBtn.disabled = false;
+                }
+            } catch (error) {
+                showStatus('❌ Xato: ' + error.message, 'error');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>
