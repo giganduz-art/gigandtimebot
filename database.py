@@ -48,7 +48,12 @@ def create_tables():
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS live_gps_tekshiruv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_aktiv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_ssid TEXT DEFAULT ''")
-    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_ip TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_mac TEXT DEFAULT ''")
+    # Migration: rename wifi_ip to wifi_mac if exists
+    try:
+        cur.execute("ALTER TABLE kompaniyalar RENAME COLUMN wifi_ip TO wifi_mac")
+    except:
+        pass
 
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
         id SERIAL PRIMARY KEY, ism TEXT NOT NULL, telefon TEXT, kod TEXT,
@@ -243,17 +248,24 @@ def get_gps(komp_id):
     return r if r else (41.299496, 69.240073, 200)
 
 def get_wifi(komp_id):
-    """WiFi sozlamalarini olish (SSID va IP address)"""
+    """WiFi sozlamalarini olish (SSID va MAC)"""
     conn = connect(); cur = conn.cursor()
-    cur.execute("SELECT wifi_aktiv,wifi_ssid,wifi_ip FROM kompaniyalar WHERE id=%s", (komp_id,))
+    cur.execute("SELECT wifi_aktiv,wifi_ssid,wifi_mac FROM kompaniyalar WHERE id=%s", (komp_id,))
     r = cur.fetchone(); cur.close(); conn.close()
     return r if r else (False, "", "")
 
-def wifi_sozla(komp_id, aktiv, ssid, ip=""):
-    """WiFi sozlamalarini o'rnatish (SSID va IP address)"""
+def get_wifi_mac(komp_id):
+    """WiFi MAC manzilini olish"""
     conn = connect(); cur = conn.cursor()
-    cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s,wifi_ip=%s WHERE id=%s",
-                (aktiv, ssid, ip, komp_id))
+    cur.execute("SELECT wifi_aktiv,wifi_mac FROM kompaniyalar WHERE id=%s", (komp_id,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return r if r else (False, "")
+
+def wifi_sozla(komp_id, aktiv, ssid, mac=""):
+    """WiFi sozlamalarini o'rnatish (SSID va MAC)"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s,wifi_mac=%s WHERE id=%s",
+                (aktiv, ssid, mac, komp_id))
     conn.commit(); cur.close(); conn.close()
 
 def komp_bugun_rasmlar(komp_id):

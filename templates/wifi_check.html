@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📡 WiFi Tekshiruvi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            max-width: 400px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .status {
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-cancel {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .btn-cancel:hover {
+            background: #e0e0e0;
+        }
+        .info-box {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #666;
+            line-height: 1.6;
+        }
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📡 WiFi Tekshiruvi</h1>
+            <p>Ish joyining WiFi-ga ulanganligingizni tekshiring</p>
+        </div>
+
+        <div id="status" class="status"></div>
+        <div class="loading-spinner" id="spinner"></div>
+
+        <div class="info-box">
+            📌 Ish joyi WiFi MAC manzili avtomatik aniqlandi. Tasdiqlang yoki qo'lda kiriting.
+        </div>
+
+        <form id="wifiForm">
+            <div class="form-group">
+                <label for="wifi_mac">🔗 MAC Manzili:</label>
+                <input type="text" id="wifi_mac" name="wifi_mac" placeholder="Masalan: 00:1A:2B:3C:4D:5E" required>
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn-cancel" onclick="closeForm()">❌ Bekor qil</button>
+                <button type="submit" class="btn-submit" id="submitBtn">✅ Tasdiqlash</button>
+            </div>
+        </form>
+
+        <div class="footer">
+            <p>Telegram @gigandtimebot</p>
+        </div>
+    </div>
+
+    <script>
+        const wifiForm = document.getElementById('wifiForm');
+        const statusDiv = document.getElementById('status');
+        const spinner = document.getElementById('spinner');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // URL parametrlarini ol
+        const urlParams = new URLSearchParams(window.location.search);
+        const xodim_id = urlParams.get('xodim_id');
+        const komp_id = urlParams.get('komp_id');
+        const amal = urlParams.get('amal') || 'keldim';
+
+        // WiFi sozlamalarini avto-aniqlashga harakat qil
+        window.addEventListener('load', () => {
+            detectWiFiInfo();
+        });
+
+        async function detectWiFiInfo() {
+            // Android WebView orqali WiFi ma'lumotlarini aniqlashga harakat qil
+            try {
+                if (window.android && window.android.getWiFiSSID) {
+                    const ssid = window.android.getWiFiSSID();
+                    const mac = window.android.getWiFiMAC();
+                    if (ssid) document.getElementById('wifi_ssid').value = ssid;
+                    if (mac) document.getElementById('wifi_mac').value = mac;
+                    return;
+                }
+            } catch (e) {
+                console.log('Android WebView aniqlash xatosi:', e);
+            }
+
+            // Browser API orqali aniqlash (qo'llab-quvvatlanmasa, bo'sh qoldirish)
+            try {
+                if (navigator.getNetworkInformation) {
+                    const connection = navigator.getNetworkInformation();
+                    // WiFi ma'lumotlari qo'pincha mavjud emas
+                }
+            } catch (e) {
+                console.log('WiFi API aniqlash xatosi:', e);
+            }
+        }
+
+        wifiForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const mac = document.getElementById('wifi_mac').value.trim();
+
+            if (!mac) {
+                showStatus('❌ MAC manzilini kiriting!', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            spinner.style.display = 'block';
+            showStatus('⏳ Tekshirilmoqda...', 'loading');
+
+            try {
+                const response = await fetch('/wifi-verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        xodim_id: xodim_id,
+                        komp_id: komp_id,
+                        wifi_mac: mac,
+                        amal: amal
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showStatus(data.message, 'success');
+                    setTimeout(() => {
+                        // Botga xabar jo'natish
+                        sendToBot(data.message);
+                    }, 1500);
+                } else if (data.status === 'failed') {
+                    showStatus(data.message + '\n\n📍 GPS kerak', 'error');
+                    submitBtn.disabled = false;
+                } else {
+                    showStatus(data.message, 'error');
+                    submitBtn.disabled = false;
+                }
+            } catch (error) {
+                showStatus('❌ Xato: ' + error.message, 'error');
+                submitBtn.disabled = false;
+            } finally {
+                spinner.style.display = 'none';
+            }
+        });
+
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        function closeForm() {
+            window.history.back();
+        }
+
+        function sendToBot(message) {
+            // Telegram bot API orqali xodimga xabar jo'natish
+            // Bu Telegram Bot API tomonidan amalga oshiriladi
+            console.log('Bot xabari:', message);
+        }
+    </script>
+</body>
+</html>

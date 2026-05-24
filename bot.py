@@ -6,6 +6,8 @@ from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
 from telegram.ext import (Application, CommandHandler, MessageHandler,
                           CallbackQueryHandler, ConversationHandler, filters, ContextTypes)
 from database import *
+from flask import Flask, render_template, request, jsonify
+from threading import Thread
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -109,10 +111,11 @@ def xod_menu_kb():
         ["📝 Sababli so'rov", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
-def xod_wifi_kb(komp_id=None, amal='keldim'):
-    """WiFi prompt inline keyboard"""
+def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
+    """WiFi prompt inline keyboard with web form"""
+    wifi_form_url = f"https://gigandtimebot.railway.app/wifi-check?user_id=&komp_id={komp_id}&amal={amal}&xodim_id={xodim_id}"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📡 WiFi ulangan", callback_data=f"wifi_{amal}_{komp_id}"),
+        [InlineKeyboardButton("🔗 WiFi tekshir", url=wifi_form_url),
          InlineKeyboardButton("📍 GPS kerak", callback_data=f"gps_{amal}_{komp_id}")],
         [InlineKeyboardButton("🏠 Orqaga", callback_data="xod_menu")]
     ])
@@ -857,18 +860,18 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_GPS_LOK
 
     elif matn == "📡 WiFi sozlash":
-        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
+        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
         holat = "✅ YONIQ" if wifi_aktiv else "❌ OCHIQ"
         await update.message.reply_text(
-            f"📡 *WiFi IP Adres Sozlamalari*\n\n"
+            f"📡 *WiFi Sozlamalari*\n\n"
             f"Holati: {holat}\n"
             f"📡 SSID: {wifi_ssid if wifi_ssid else '(belgilanmagan)'}\n"
-            f"🌐 IP Address: {wifi_ip if wifi_ip else '(belgilanmagan)'}\n\n"
+            f"🔗 MAC Manzili: {wifi_mac if wifi_mac else '(belgilanmagan)'}\n\n"
             f"Qanday qilish kerak?",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["✅ Yoqish", "❌ O'chirish"],
-                ["✏️ SSID nomini o'zgartirish", "✏️ IP address'ni o'zgartirish"],
+                ["✏️ SSID nomini o'zgartirish", "✏️ MAC manzilini o'zgartirish"],
                 ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return ADM_WIFI_AKTIV
@@ -1328,17 +1331,17 @@ async def adm_wifi_aktiv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text.strip()
 
     if matn == "✅ Yoqish":
-        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
-        if not wifi_ssid or not wifi_ip:
+        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
+        if not wifi_ssid or not wifi_mac:
             await update.message.reply_text(
                 "📡 WiFi nomini kiriting (SSID):\n\n"
                 "Masalan: GIGAND_OFFICE",
                 reply_markup=ReplyKeyboardRemove())
             context.user_data['wifi_step'] = 'ssid'
             return ADM_WIFI_SSID
-        wifi_sozla(komp_id, True, wifi_ssid, wifi_ip)
+        wifi_sozla(komp_id, True, wifi_ssid, wifi_mac)
         await update.message.reply_text(
-            f"✅ WiFi yoqildi!\n📡 SSID: {wifi_ssid}\n🌐 IP: {wifi_ip}",
+            f"✅ WiFi yoqildi!\n📡 SSID: {wifi_ssid}\n🔗 MAC: {wifi_mac}",
             reply_markup=adm_menu_kb())
         return ADM_MENU
 
@@ -1355,12 +1358,12 @@ async def adm_wifi_aktiv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['wifi_step'] = 'ssid'
         return ADM_WIFI_SSID
 
-    elif matn == "✏️ IP address'ni o'zgartirish":
+    elif matn == "✏️ MAC manzilini o'zgartirish":
         await update.message.reply_text(
-            "🌐 Yangi IP address'ni kiriting:\n\n"
-            "Masalan: 192.168.1.1",
+            "🔗 Yangi MAC manzilini kiriting:\n\n"
+            "Masalan: 00:1A:2B:3C:4D:5E",
             reply_markup=ReplyKeyboardRemove())
-        context.user_data['wifi_step'] = 'ip'
+        context.user_data['wifi_step'] = 'mac'
         return ADM_WIFI_SSID
 
     elif matn == "🔙 Orqaga":
@@ -1381,27 +1384,27 @@ async def adm_wifi_ssid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ADM_WIFI_SSID
 
         context.user_data['temp_wifi_ssid'] = matn
-        context.user_data['wifi_step'] = 'ip'
+        context.user_data['wifi_step'] = 'mac'
         await update.message.reply_text(
-            "🌐 Endi WiFi IP Address'ni kiriting:\n\n"
-            "Masalan: 192.168.1.1",
+            "🔗 Endi WiFi MAC manzilini kiriting:\n\n"
+            "Masalan: 00:1A:2B:3C:4D:5E",
             reply_markup=ReplyKeyboardRemove())
         return ADM_WIFI_SSID
 
-    elif wifi_step == 'ip':
-        if not matn or len(matn) < 7:
-            await update.message.reply_text("❌ Haqiqiy IP address'ni kiriting!")
+    elif wifi_step == 'mac':
+        if not matn or len(matn) < 17:
+            await update.message.reply_text("❌ Haqiqiy MAC manzilini kiriting! (Format: 00:1A:2B:3C:4D:5E)")
             return ADM_WIFI_SSID
 
         wifi_aktiv, wifi_ssid, _ = get_wifi(komp_id)
 
-        # Agar temp SSID mavjud bo'lsa (yangi setup) uni ishlatsin, yoki mavjud SSIDni saqlasin (IP tahrirlash)
+        # Agar temp SSID mavjud bo'lsa (yangi setup) uni ishlatsin, yoki mavjud SSIDni saqlasin (MAC tahrirlash)
         ssid = context.user_data.get('temp_wifi_ssid', '') or wifi_ssid
 
         wifi_sozla(komp_id, wifi_aktiv or True, ssid, matn)
 
         await update.message.reply_text(
-            f"✅ WiFi saqlandi!\n📡 SSID: {ssid}\n🌐 IP: {matn}\n"
+            f"✅ WiFi saqlandi!\n📡 SSID: {ssid}\n🔗 MAC: {matn}\n"
             f"Holati: {'✅ YONIQ' if wifi_aktiv else '✅ YOQILDI'}",
             reply_markup=adm_menu_kb())
         context.user_data.pop('temp_wifi_ssid', None)
@@ -1494,16 +1497,16 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if matn == "✅ Keldim":
-        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
+        xodim_id = context.user_data.get('xodim_id')
+        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
 
-        if wifi_aktiv and wifi_ssid:  # WiFi IP Adres aktiv
+        if wifi_aktiv and wifi_mac:  # WiFi MAC aktiv
             await update.message.reply_text(
-                f"📡 *WiFi IP ADRES*\n\n"
-                f"Ish joyi WiFi-ga ('*{wifi_ssid}*') ulanganmisiz?\n\n"
-                f"📡 Ulangan → avtamatik Keldim\n"
-                f"📍 Ulanmagan → GPS kerak",
+                f"📡 *WiFi TEKSHIRUVI*\n\n"
+                f"Ish joyining WiFi MAC: *{wifi_mac}*\n\n"
+                f"🔗 Tugmani bosing va MAC manzilini tasdiqlang",
                 parse_mode='Markdown',
-                reply_markup=xod_wifi_kb(komp_id, 'keldim'))
+                reply_markup=xod_wifi_kb(komp_id, 'keldim', xodim_id))
             context.user_data['wifi_waiting'] = True
             return XOD_MENU
 
@@ -1543,16 +1546,16 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_KELDI_RASM
 
     elif matn == "🚪 Ketdim":
-        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
+        xodim_id = context.user_data.get('xodim_id')
+        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
 
-        if wifi_aktiv and wifi_ssid:  # WiFi IP Adres aktiv
+        if wifi_aktiv and wifi_mac:  # WiFi MAC aktiv
             await update.message.reply_text(
-                f"📡 *WiFi IP ADRES*\n\n"
-                f"Ish joyi WiFi-ga ('*{wifi_ssid}*') ulanganmisiz?\n\n"
-                f"📡 Ulangan → avtamatik Ketdim\n"
-                f"📍 Ulanmagan → GPS kerak",
+                f"📡 *WiFi TEKSHIRUVI*\n\n"
+                f"Ish joyining WiFi MAC: *{wifi_mac}*\n\n"
+                f"🔗 Tugmani bosing va MAC manzilini tasdiqlang",
                 parse_mode='Markdown',
-                reply_markup=xod_wifi_kb(komp_id, 'ketdi'))
+                reply_markup=xod_wifi_kb(komp_id, 'ketdi', xodim_id))
             context.user_data['wifi_waiting_ketdi'] = True
             return XOD_MENU
 
@@ -2246,6 +2249,66 @@ async def wifi_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Xato: {context.error}", exc_info=context.error)
 
+# ==================== FLASK WEB SERVER ====================
+
+flask_app = Flask(__name__, template_folder='templates')
+
+@flask_app.route('/wifi-check', methods=['GET'])
+def wifi_check_page():
+    user_id = request.args.get('user_id')
+    komp_id = request.args.get('komp_id')
+    amal = request.args.get('amal', 'keldim')
+    xodim_id = request.args.get('xodim_id')
+
+    return render_template('wifi_check.html', user_id=user_id, komp_id=komp_id,
+                         amal=amal, xodim_id=xodim_id)
+
+@flask_app.route('/wifi-verify', methods=['POST'])
+def wifi_verify():
+    try:
+        data = request.get_json()
+        xodim_id = data.get('xodim_id')
+        komp_id = data.get('komp_id')
+        wifi_mac = data.get('wifi_mac', '').strip().upper()
+        amal = data.get('amal', 'keldim')
+
+        if not all([xodim_id, komp_id, wifi_mac]):
+            return jsonify({'status': 'error', 'message': '❌ Ma\'lumot to\'liq emas!'})
+
+        wifi_aktiv, komp_mac = get_wifi_mac(int(komp_id))
+
+        if not wifi_aktiv or not komp_mac:
+            return jsonify({'status': 'error', 'message': '❌ Tashkilotning WiFi sozlamalari yo\'q!'})
+
+        mac_match = wifi_mac.upper() == (komp_mac or '').upper()
+
+        if mac_match:
+            try:
+                if amal == 'keldim':
+                    natija = keldi_belgilash(int(xodim_id), int(komp_id))
+                    if natija == "already":
+                        return jsonify({'status': 'error', 'message': '⚠️ Bugun allaqachon belgilangan!'})
+                    _, vaqt, kechikish = natija.split("|")
+                    audit_log_qoshish(int(komp_id), 'KELDI', f"WiFi orqali: {vaqt}", int(xodim_id), None, None, None, 'WiFi Form')
+                    return jsonify({'status': 'success', 'message': f'✅ Keldi: {vaqt}'})
+                else:
+                    natija = ketdi_belgilash(int(xodim_id), int(komp_id))
+                    if natija == "nokeldi":
+                        return jsonify({'status': 'error', 'message': '❌ Avval keldi belgilanmagan!'})
+                    _, vaqt, ish_soat, ish_tugash = natija.split("|")
+                    audit_log_qoshish(int(komp_id), 'KETDI', f"WiFi orqali: {vaqt}", int(xodim_id), None, None, None, 'WiFi Form')
+                    return jsonify({'status': 'success', 'message': f'✅ Ketdi: {vaqt}'})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f'❌ Xato: {str(e)}'})
+        else:
+            return jsonify({'status': 'failed', 'message': '❌ MAC manzil mos kelmadi! GPS kerak.'})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'❌ Server xatosi: {str(e)}'})
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=5000, debug=False)
+
 # ==================== MAIN ====================
 
 def main():
@@ -2353,6 +2416,11 @@ def main():
     jq.run_daily(haftalik_hisobot_job,
                  time=dtime(hour=18, minute=0, second=0, tzinfo=TASHKENT),
                  days=(4,))  # 4 = Juma
+
+    # Flask serverini background thread'da ishla
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print("Flask server ishlamoqda port 5000 da...")
 
     print("Bot ishlamoqda...")
     app.run_polling(drop_pending_updates=True)
