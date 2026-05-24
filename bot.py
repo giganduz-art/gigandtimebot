@@ -3,7 +3,7 @@ from datetime import datetime, time as dtime, timedelta
 import pytz
 from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
                       InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, WebAppInfo,
-                      BotCommand, ChatMenuButton)
+                      BotCommand)
 from telegram.ext import (Application, CommandHandler, MessageHandler,
                           CallbackQueryHandler, ConversationHandler, filters, ContextTypes)
 from database import *
@@ -2381,14 +2381,15 @@ def wifi_verify():
 # ==================== MAIN ====================
 
 async def post_init(app: Application):
-    """Setup bot commands and menu button"""
-    commands = [
-        BotCommand("start", "🏠 Boshlash / Start"),
-    ]
-    await app.bot.set_my_commands(commands)
-    # Set main menu button
-    menu_button = ChatMenuButton()
-    await app.bot.set_chat_menu_button(menu_button=menu_button)
+    """Setup bot commands"""
+    try:
+        commands = [
+            BotCommand("start", "🏠 Boshlash / Start"),
+        ]
+        await app.bot.set_my_commands(commands)
+        logger.info("Bot commands configured successfully")
+    except Exception as e:
+        logger.error(f"Error setting bot commands: {e}")
 
 def main():
     if not BOT_TOKEN:
