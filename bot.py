@@ -113,7 +113,10 @@ def xod_menu_kb():
 
 def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
     """WiFi prompt inline keyboard with web form"""
-    wifi_form_url = f"https://gigandtimebot.railway.app/wifi-check?user_id=&komp_id={komp_id}&amal={amal}&xodim_id={xodim_id}"
+    base_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'gigandtimebot.railway.app')
+    if not base_url.startswith('http'):
+        base_url = 'https://' + base_url
+    wifi_form_url = f"{base_url}/wifi-check?user_id=&komp_id={komp_id}&amal={amal}&xodim_id={xodim_id}"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 WiFi tekshir", url=wifi_form_url),
          InlineKeyboardButton("📍 GPS kerak", callback_data=f"gps_{amal}_{komp_id}")],
@@ -2251,7 +2254,9 @@ async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== FLASK WEB SERVER ====================
 
-flask_app = Flask(__name__, template_folder='templates')
+import os
+template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+flask_app = Flask(__name__, template_folder=template_dir)
 
 @flask_app.route('/wifi-check', methods=['GET'])
 def wifi_check_page():
@@ -2307,7 +2312,8 @@ def wifi_verify():
         return jsonify({'status': 'error', 'message': f'❌ Server xatosi: {str(e)}'})
 
 def run_flask():
-    flask_app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get('PORT', 5000))
+    flask_app.run(host='0.0.0.0', port=port, debug=False)
 
 # ==================== MAIN ====================
 
