@@ -78,7 +78,8 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     XOD_SABAB_SANA, XOD_SABAB_MATN,
     SA_KOMP_DELETE_KOD,
     SA_HISOBOT_SANA, SA_HISOBOT_KUN,
-) = range(64)
+    SA_XODIM_DELETE_KOD, ADM_XODIM_DELETE_KOD,
+) = range(66)
 
 # ==================== MENYULAR ====================
 
@@ -767,30 +768,12 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("❌ Bu xodim bu kompaniyaga tegishli emas!", reply_markup=sa_menu_kb())
             return SA_MENU
 
-        xodim_ism = x[1] if x else 'Unknown'
-        xodim_ochirish(xodim_id)
-
-        # AUDIT LOG
-        user_id = update.effective_user.id
-        user_ism = update.effective_user.first_name or 'Super Admin'
-        tafsilot = f"Xodim o'chirildi: {xodim_ism}"
-        audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
-
-        # Show xodim list again
-        xodimlar = kompaniya_xodimlari(komp_id)
-        if not xodimlar:
-            await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 Boshqa xodim yo'q.", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
-            return SA_KOMP_XODIM_TANLASH
-
-        xabar = "🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n\n"
-        tugmalar = []
-        for x in xodimlar:
-            xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
-            tugmalar.append([f"{x[0]}. {x[1]}"])
-        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
-        await update.message.reply_text(xabar, parse_mode='Markdown',
-            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
-        return SA_KOMP_XODIM_TANLASH
+        context.user_data['delete_xodim_ism'] = x[1]
+        await update.message.reply_text(
+            f"⚠️ *{x[1]}* xodimni o'chirmoqchisiz!\n\n"
+            f"Tasdiqlash uchun *sizning maxfiy kodingizni* kiriting:",
+            parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+        return SA_XODIM_DELETE_KOD
     elif matn == "✏️ Tahrirlash":
         await update.message.reply_text("Nimani tahrirlash?",
             reply_markup=ReplyKeyboardMarkup([
@@ -801,6 +784,44 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
             ], resize_keyboard=True))
         return SA_KOMP_XODIM_TAHRIR
     return SA_KOMP_XODIM_AMAL
+
+async def sa_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin o'chirish kodi tekshiruvi"""
+    kod = update.message.text.strip()
+    user_id = update.effective_user.id
+
+    # Super Admin kodini tekshir
+    if not super_admin_kod_tekshir(kod):
+        await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=sa_menu_kb())
+        return SA_MENU
+
+    # Kod to'g'ri, xodimni o'chir
+    komp_id = context.user_data.get('sa_komp_id')
+    xodim_id = context.user_data.get('tahrir_xodim_id')
+    xodim_ism = context.user_data.get('delete_xodim_ism', 'Unknown')
+
+    xodim_ochirish(xodim_id)
+
+    # AUDIT LOG
+    user_ism = update.effective_user.first_name or 'Super Admin'
+    tafsilot = f"Xodim o'chirildi: {xodim_ism}"
+    audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+    # Show xodim list again
+    xodimlar = kompaniya_xodimlari(komp_id)
+    if not xodimlar:
+        await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 Boshqa xodim yo'q.", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_XODIM_TANLASH
+
+    xabar = "🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n\n"
+    tugmalar = []
+    for x in xodimlar:
+        xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
+        tugmalar.append([f"{x[0]}. {x[1]}"])
+    tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+    await update.message.reply_text(xabar, parse_mode='Markdown',
+        reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+    return SA_KOMP_XODIM_TANLASH
 
 async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
@@ -1185,6 +1206,35 @@ async def adm_xodim_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown', reply_markup=adm_menu_kb())
     return ADM_MENU
 
+async def adm_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin o'chirish kodi tekshiruvi"""
+    kod = update.message.text.strip()
+    user_id = update.effective_user.id
+    komp_id = context.user_data.get('komp_id')
+
+    # Admin kodini tekshir
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT admin_kod FROM kompaniyalar WHERE id=%s", (komp_id,))
+    row = cur.fetchone(); cur.close(); conn.close()
+
+    if not row or row[0] != kod:
+        await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    # Kod to'g'ri, xodimni o'chir
+    xodim_id = context.user_data.get('tahrir_xodim_id')
+    xodim_ism = context.user_data.get('delete_xodim_ism', 'Unknown')
+
+    xodim_ochirish(xodim_id)
+
+    # AUDIT LOG
+    user_ism = update.effective_user.first_name or 'Admin'
+    tafsilot = f"Xodim o'chirildi: {xodim_ism}"
+    audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+    await update.message.reply_text("🗑 Xodim o'chirildi! ✅", reply_markup=adm_menu_kb())
+    return ADM_MENU
+
 async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     if matn == "🔙 Orqaga":
@@ -1203,17 +1253,12 @@ async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Bu xodim sizning tashkilotingizga tegishli emas!", reply_markup=adm_menu_kb())
                 return ADM_MENU
 
-            xodim_ism = x[1] if x else 'Unknown'
-            xodim_ochirish(xodim_id)
-
-            # AUDIT LOG
-            user_id = update.effective_user.id
-            user_ism = update.effective_user.first_name or 'Admin'
-            tafsilot = f"Xodim o'chirildi: {xodim_ism}"
-            audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
-
-            await update.message.reply_text("🗑 Xodim o'chirildi!", reply_markup=adm_menu_kb())
-            return ADM_MENU
+            context.user_data['delete_xodim_ism'] = x[1]
+            await update.message.reply_text(
+                f"⚠️ *{x[1]}* xodimni o'chirmoqchisiz!\n\n"
+                f"Tasdiqlash uchun *sizning maxfiy kodingizni* kiriting:",
+                parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+            return ADM_XODIM_DELETE_KOD
         x = xodim_olish(xodim_id)
         await update.message.reply_text(
             f"✏️ *{x[1]}*\n💼 {x[3]} | 🎭 {x[7]}\n🔐 `{x[8]}`\n\nNimani tahrirlash?",
@@ -2502,6 +2547,8 @@ def main():
             ADM_XODIM_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tanlash)],
             ADM_XODIM_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir)],
             ADM_XODIM_TAHRIR_Q: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir_q)],
+            SA_XODIM_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xodim_delete_kod)],
+            ADM_XODIM_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_delete_kod)],
             ADM_GPS_LOK: [
                 MessageHandler(filters.LOCATION, adm_gps_lok),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, adm_gps_lok),
