@@ -110,9 +110,7 @@ def xod_menu_kb():
 
 def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
     """WiFi prompt with Telegram WebApp"""
-    base_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'gigandtimebot.railway.app')
-    if not base_url.startswith('http'):
-        base_url = 'https://' + base_url
+    base_url = os.environ.get('APP_URL', 'https://gigandtimebot-production.up.railway.app')
     wifi_app_url = f"{base_url}/wifi-app?xodim_id={xodim_id}&komp_id={komp_id}&amal={amal}"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📡 WiFi tekshir", web_app=WebAppInfo(url=wifi_app_url))],
