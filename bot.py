@@ -487,8 +487,8 @@ async def sa_komp_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["✏️ Tahrirlash", "⚙️ Funksiyalar"],
                 ["✅ Faollashtirish", "🔴 To'xtatish"],
                 ["👥 Xodimlar", "📅 Davomat"],
-                ["📊 Hisobot", "🗑 O'chirish"],
-                ["🔙 Orqaga"]
+                ["📆 Sana bo'yicha", "📊 Hisobot"],
+                ["🗑 O'chirish", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_TANLASH
     except:
@@ -606,6 +606,13 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(xabar, parse_mode='Markdown')
         return SA_KOMP_TANLASH
 
+    elif matn == "📆 Sana bo'yicha":
+        await update.message.reply_text(
+            "📅 Sana kiriting (YYYY-MM-DD):\n\n"
+            "Misol: 2026-05-24",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_KOMP_DAV_SANA
+
     elif matn == "📊 Hisobot":
         await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
         try:
@@ -619,6 +626,53 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_KOMP_TANLASH
 
     return SA_KOMP_TANLASH
+
+async def sa_komp_dav_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - View attendance for a specific date"""
+    sana_matn = update.message.text.strip()
+    komp_id = context.user_data.get('sa_komp_id')
+    komp = kompaniya_olish(komp_id)
+    komp_nomi = komp[1] if komp else "Noma'lum"
+
+    # Validate date format
+    if len(sana_matn) != 10 or sana_matn[4] != '-' or sana_matn[7] != '-':
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\n"
+            f"Iltimos format shunga mos kelsin: YYYY-MM-DD\n"
+            f"Misol: 2026-05-24",
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_DAV_SANA
+
+    try:
+        davomatlar = kompaniya_davomati(komp_id, sana_matn)
+
+        if not davomatlar:
+            await update.message.reply_text(
+                f"❌ {komp_nomi} kompaniyada {sana_matn} sanada davomat yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_KOMP_DAV_SANA
+
+        xabar = f"📅 *{sana_matn} - {komp_nomi}:*\n\n"
+        xabar += f"👥 Jami: {len(davomatlar)} ta xodim\n\n"
+
+        for d in davomatlar:
+            ism, sana, keldi, ketdi, ish_soat, kechikish, holat = d[0], d[1], d[2], d[3], d[4], d[5], d[6]
+            xabar += f"👤 *{ism}*\n"
+            xabar += f"  ✅ Keldi: {keldi or '—'}\n"
+            xabar += f"  🚪 Ketdi: {ketdi or '—'}\n"
+            if ish_soat:
+                soat = int(ish_soat)
+                minut = int((ish_soat - soat) * 60)
+                xabar += f"  ⏱️ Ish soati: {soat}h {minut}m\n"
+            if kechikish and kechikish > 0:
+                xabar += f"  ⚠️ Kechikish: {kechikish_format(kechikish)}\n"
+            xabar += f"  📊 Holat: {holat}\n\n"
+
+        await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_DAV_SANA
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_DAV_SANA
 
 async def sa_komp_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kod = update.message.text.strip()
@@ -735,8 +789,8 @@ async def sa_komp_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TY
                 ["✏️ Tahrirlash", "⚙️ Funksiyalar"],
                 ["✅ Faollashtirish", "🔴 To'xtatish"],
                 ["👥 Xodimlar", "📅 Davomat"],
-                ["📊 Hisobot", "🗑 O'chirish"],
-                ["🔙 Orqaga"]
+                ["📆 Sana bo'yicha", "📊 Hisobot"],
+                ["🗑 O'chirish", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_TANLASH
     if matn == "➕ Xodim qo'shish":
@@ -2684,6 +2738,7 @@ def main():
             SA_KOMP_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_kod)],
             SA_KOMP_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tanlash)],
             SA_KOMP_AMAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_amal)],
+            SA_KOMP_DAV_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_dav_sana)],
             SA_KOMP_TAHRIR_QIYMAT: [
                 MessageHandler(filters.LOCATION, sa_komp_tahrir_qiymat),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_tahrir_qiymat),
