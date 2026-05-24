@@ -2417,16 +2417,16 @@ def main():
     app.add_handler(CallbackQueryHandler(sorov_callback, pattern=r'^sorov_'))
     app.add_handler(CallbackQueryHandler(wifi_callback, pattern=r'^wifi_'))
     app.add_handler(CallbackQueryHandler(gps_callback, pattern=r'^gps_'))
-    # Live lokatsiya yangilanishi (edited_message)
-    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
+    # Live lokatsiya disabled - use regular GPS locations only
+    # app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
     app.add_error_handler(xato)
 
     # Job Queue — schedulerlar
     jq = app.job_queue
     # Har 30 daqiqada joylashuv tekshiruvi
     jq.run_repeating(tekshiruv_job, interval=1800, first=60)
-    # 8 soat live location timeout
-    jq.run_repeating(live_location_timeout_job, interval=600, first=60)
+    # Live location timeout disabled - using regular GPS only
+    # jq.run_repeating(live_location_timeout_job, interval=600, first=60)
     # Har daqiqa eslatma (ish boshlanishi va tug'ilgan kun)
     jq.run_repeating(eslatma_job, interval=60, first=30)
     # Juma kuni soat 18:00 da haftalik hisobot
