@@ -218,7 +218,7 @@ def kompaniya_olish(komp_id):
     cur.execute('''SELECT id,nomi,admin_telefon,admin_id,holat,
                   gps_lat,gps_lon,gps_radius,yaratilgan,
                   gps_aktiv,selfie_aktiv,face_id_aktiv,hikvision_aktiv,admin_kod,
-                  live_gps_aktiv,live_gps_tekshiruv,wifi_aktiv,wifi_ssid,wifi_ip FROM kompaniyalar WHERE id=%s''', (komp_id,))
+                  live_gps_aktiv,live_gps_tekshiruv,wifi_aktiv,wifi_ssid,wifi_mac FROM kompaniyalar WHERE id=%s''', (komp_id,))
     r = cur.fetchone(); cur.close(); conn.close(); return r
 
 def kompaniya_holat_ozgartir(komp_id, holat):
