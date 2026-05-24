@@ -2254,7 +2254,6 @@ async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== FLASK WEB SERVER ====================
 
-import os
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 flask_app = Flask(__name__, template_folder=template_dir)
 
