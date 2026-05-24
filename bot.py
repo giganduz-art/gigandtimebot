@@ -102,6 +102,7 @@ def adm_menu_kb():
 
 def hr_menu_kb():
     return ReplyKeyboardMarkup([
+        ["✅ Keldim", "🚪 Ketdim"],
         ["✍️ Manual davomat", "👁️ Davomatni ko'rish"],
         ["📊 Hisobot", "☰ Menu"]
     ], resize_keyboard=True)
@@ -1783,6 +1784,78 @@ async def adm_wifi_ssid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     komp_id = context.user_data.get('komp_id')
+    xodim_id = context.user_data.get('xodim_id')
+    komp = kompaniya_olish(komp_id)
+
+    # Check company status
+    if not komp or komp[4] != 'faol':
+        await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
+        return HR_MENU
+
+    # HR user marking their own attendance
+    if matn == "✅ Keldim":
+        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
+
+        if wifi_aktiv and wifi_mac:  # WiFi MAC aktiv
+            await update.message.reply_text(
+                f"📡 *WiFi TEKSHIRUVI*\n\n"
+                f"Ish joyining WiFi MAC: *{wifi_mac}*\n\n"
+                f"🔗 Tugmani bosing va MAC manzilini tasdiqlang",
+                parse_mode='Markdown',
+                reply_markup=xod_wifi_kb(komp_id, 'keldim', xodim_id))
+            context.user_data['wifi_waiting'] = True
+            return HR_MENU
+
+        if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
+            btn = [[KeyboardButton("📍 Joylashuvni yuboring", request_location=True)]]
+            await update.message.reply_text(
+                "📍 Joylashuvingizni yuboring:",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+            return XOD_KELDI_GPS
+        else:
+            natija = keldi_belgilash(xodim_id, komp_id)
+            if natija == "already":
+                await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=hr_menu_kb())
+                return HR_MENU
+            _, vaqt, kechikish = natija.split("|")
+            msg = f"✅ Keldi vaqti: {vaqt}"
+            if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+            await update.message.reply_text(f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
+            context.user_data['keldi_m'] = 0
+            return XOD_KELDI_RASM
+
+    elif matn == "🚪 Ketdim":
+        wifi_aktiv, wifi_ssid, wifi_mac = get_wifi(komp_id)
+
+        if wifi_aktiv and wifi_mac:  # WiFi MAC aktiv
+            await update.message.reply_text(
+                f"📡 *WiFi TEKSHIRUVI*\n\n"
+                f"Ish joyining WiFi MAC: *{wifi_mac}*\n\n"
+                f"🔗 Tugmani bosing va MAC manzilini tasdiqlang",
+                parse_mode='Markdown',
+                reply_markup=xod_wifi_kb(komp_id, 'ketdi', xodim_id))
+            context.user_data['wifi_waiting_ketdi'] = True
+            return HR_MENU
+
+        if komp[9] or komp[14]:
+            btn = [[KeyboardButton("📍 Joylashuvni yuboring", request_location=True)]]
+            await update.message.reply_text("📍 Joylashuvingizni yuboring:",
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+            return XOD_KETDI_GPS
+        else:
+            natija = ketdi_belgilash(xodim_id, komp_id)
+            if natija == "nokeldi":
+                await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=hr_menu_kb())
+                return HR_MENU
+            _, vaqt, ish_soat, ish_tugash = natija.split("|")
+            xodim = xodim_olish(xodim_id)
+            s = int(float(ish_soat)); d = int((float(ish_soat) - s) * 60)
+            msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa"
+            await update.message.reply_text(f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
+            context.user_data['ketdi_m'] = 0
+            return XOD_KETDI_RASM
+
     if matn == "✍️ Manual davomat":
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
