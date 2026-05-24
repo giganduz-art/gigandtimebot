@@ -1031,8 +1031,11 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_MENU
 
     elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
-        await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
+        await update.message.reply_text("Boshidan boshlash uchun:", reply_markup=menu_restart_kb())
         return ADM_MENU
+
+    elif matn == "🔄 Restart / Boshla":
+        return await start(update, context)
 
     return ADM_MENU
 
@@ -1530,8 +1533,12 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Xatolik: {e}")
         return HR_MENU
     elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
-        await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu_kb())
+        await update.message.reply_text("Boshidan boshlash uchun:", reply_markup=menu_restart_kb())
         return HR_MENU
+
+    elif matn == "🔄 Restart / Boshla":
+        return await start(update, context)
+
     return HR_MENU
 
 async def hr_man_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1768,8 +1775,11 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_MENU
 
     elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
-        await update.message.reply_text("👋 Menu:", reply_markup=xod_menu_kb())
+        await update.message.reply_text("Boshidan boshlash uchun:", reply_markup=menu_restart_kb())
         return XOD_MENU
+
+    elif matn == "🔄 Restart / Boshla":
+        return await start(update, context)
 
     return XOD_MENU
 
