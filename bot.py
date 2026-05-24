@@ -466,7 +466,7 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["📝 Nomi", "📞 Admin telefon"],
                 ["🔑 Admin kodi", "📍 GPS"],
                 ["📏 Radius", "📡 WiFi SSID"],
-                ["📡 WiFi", "🔙 Orqaga"]
+                ["🔗 WiFi MAC", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_AMAL
 
