@@ -2092,7 +2092,46 @@ async def eslatma_job(context: ContextTypes.DEFAULT_TYPE):
                     parse_mode='Markdown')
         except: pass
 
-# ==================== WIFI CALLBACK ====================
+# ==================== WIFI/GPS CALLBACK ====================
+
+async def gps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """GPS button callback handler - ask for location"""
+    query = update.callback_query
+    data = query.data
+
+    # Parse callback data: gps_keldim_komp_id or gps_ketdi_komp_id
+    parts = data.split("_")
+    if len(parts) < 3:
+        return
+
+    amal = parts[1]  # 'keldim' or 'ketdi'
+    komp_id = int(parts[2])
+
+    try:
+        await query.answer()
+
+        if amal == 'keldim':
+            btn = [[KeyboardButton("📍 GPS yuborish", request_location=True)]]
+            await query.edit_message_text(
+                "📍 *GPS lokatsiya yuboring:*\n\n"
+                "Telegram'da 'Joylashuv' tugmasini bosing",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+            context.user_data['wifi_waiting'] = False
+            return
+
+        elif amal == 'ketdi':
+            btn = [[KeyboardButton("📍 GPS yuborish", request_location=True)]]
+            await query.edit_message_text(
+                "📍 *GPS lokatsiya yuboring:*\n\n"
+                "Telegram'da 'Joylashuv' tugmasini bosing",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+            context.user_data['wifi_waiting_ketdi'] = False
+            return
+
+    except Exception as e:
+        await query.answer(f"❌ Xatolik: {e}", show_alert=True)
 
 async def wifi_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """WiFi button callback handler"""
@@ -2261,6 +2300,7 @@ def main():
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(sorov_callback, pattern=r'^sorov_'))
     app.add_handler(CallbackQueryHandler(wifi_callback, pattern=r'^wifi_'))
+    app.add_handler(CallbackQueryHandler(gps_callback, pattern=r'^gps_'))
     # Live lokatsiya yangilanishi (edited_message)
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
     app.add_error_handler(xato)
