@@ -87,7 +87,7 @@ def sa_menu_kb():
         ["🏢 Kompaniyalar", "👑 Super Adminlar"],
         ["📊 Umumiy hisobot", "📋 Audit Log"],
         ["📸 Barcha rasmlar", "🔐 Sozlamalar"],
-        ["🏠 Bosh menu"]
+        ["☰ Menu"]
     ], resize_keyboard=True)
 
 def adm_menu_kb():
@@ -95,26 +95,26 @@ def adm_menu_kb():
         ["👥 Xodimlar", "📅 Davomat"],
         ["📊 Hisobot", "📍 GPS sozlash"],
         ["📡 WiFi sozlash", "📋 Audit Log"],
-        ["📸 Rasm log", "🏠 Bosh menu"]
+        ["📸 Rasm log", "☰ Menu"]
     ], resize_keyboard=True)
 
 def hr_menu_kb():
     return ReplyKeyboardMarkup([
         ["✍️ Manual davomat", "📊 Hisobot"],
-        ["🏠 Bosh menu"]
+        ["☰ Menu"]
     ], resize_keyboard=True)
 
 def xod_menu_kb():
     return ReplyKeyboardMarkup([
         ["✅ Keldim", "🚪 Ketdim"],
         ["📋 Davomatim", "📊 Statistikam"],
-        ["📝 Sababli so'rov", "🏠 Bosh menu"]
+        ["📝 Sababli so'rov", "☰ Menu"]
     ], resize_keyboard=True)
 
 def restart_kb():
     """Keyboard with restart/home menu button"""
     return ReplyKeyboardMarkup([
-        ["🏠 Bosh menu"]
+        ["☰ Menu"]
     ], resize_keyboard=True)
 
 def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
@@ -419,7 +419,7 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ], resize_keyboard=True))
         return SA_SOZ_MENU
 
-    elif matn == "🏠 Bosh menu":
+    elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
         await update.message.reply_text("👑 Super Admin paneliga xush kelibsiz!", reply_markup=sa_menu_kb())
         return SA_MENU
 
@@ -1021,7 +1021,7 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('audit_view', None)
         return ADM_MENU
 
-    elif matn == "🏠 Bosh menu":
+    elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
 
@@ -1520,7 +1520,7 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"❌ Xatolik: {e}")
         return HR_MENU
-    elif matn == "🏠 Bosh menu":
+    elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
         await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu_kb())
         return HR_MENU
     return HR_MENU
@@ -1758,7 +1758,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             live_lokatsiya_ochirish(xodim_id)
             return XOD_MENU
 
-    elif matn == "🏠 Bosh menu":
+    elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
         await update.message.reply_text("👋 Menu:", reply_markup=xod_menu_kb())
         return XOD_MENU
 
@@ -1807,7 +1807,7 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
-    if matn == "🏠 Bosh menu":
+    if matn == "☰ Menu" or matn == "🏠 Bosh menu":
         return await start(update, context)
 
     if not update.message.photo and not update.message.video_note:
@@ -1877,7 +1877,7 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
-    if matn == "🏠 Bosh menu":
+    if matn == "☰ Menu" or matn == "🏠 Bosh menu":
         return await start(update, context)
 
     if not update.message.photo and not update.message.video_note:
