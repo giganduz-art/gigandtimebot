@@ -2133,7 +2133,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return XOD_MENU
 
     elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
-        await update.message.reply_text("Boshidan boshlash uchun:", reply_markup=menu_restart_kb())
+        await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
         return XOD_MENU
 
     elif matn == "🔄 Restart / Boshla":
