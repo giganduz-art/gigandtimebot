@@ -29,11 +29,12 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
         tug = datetime.strptime(ish_tugash, "%H:%M")
         ket = datetime.strptime(ketdi_vaqt, "%H:%M")
         farq = int((ket - tug).total_seconds() / 60)
+        farq_fmt = kechikish_format(abs(farq))
         s = int(ish_soat); d = int((ish_soat - s) * 60)
         if farq >= 30:
-            return (f"🌙 *QOLIB ISHLASH* (+{farq} daqiqa ortiqcha)\n"
+            return (f"🌙 *QOLIB ISHLASH* (+{farq_fmt} ortiqcha)\n"
                     f"Rahmat, {ism}! Bugun {s} soat {d} daqiqa ishlading.\n"
-                    f"Qo'shimcha {farq} daqiqa qolib ishlading! 🏆\n"
+                    f"Qo'shimcha {farq_fmt} qolib ishlading! 🏆\n"
                     f"Bunday fidoyilik qadrlanadi!")
         elif farq >= -15:
             return (f"✅ *TO'LIQ ISH KUNI*\n"
@@ -41,12 +42,12 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
                     f"Bugun {s} soat {d} daqiqa samarali mehnat qildingiz! 💼\n"
                     f"Xayrli oqshom!")
         elif farq >= -30:
-            return (f"⚠️ *ERTA KETISH* ({-farq} daqiqa oldin)\n"
-                    f"Diqqat, {ism}! Ish vaqti tugamay {-farq} daqiqa oldin ketdingiz.\n"
+            return (f"⚠️ *ERTA KETISH* ({farq_fmt} oldin)\n"
+                    f"Diqqat, {ism}! Ish vaqti tugamay {farq_fmt} oldin ketdingiz.\n"
                     f"Sababini HR ga bildiring! 📋")
         else:
-            return (f"❗ *JIDDIY ERTA KETISH* ({-farq} daqiqa oldin)\n"
-                    f"Ogohlantirish, {ism}! {-farq} daqiqa oldin ketdingiz.\n"
+            return (f"❗ *JIDDIY ERTA KETISH* ({farq_fmt} oldin)\n"
+                    f"Ogohlantirish, {ism}! {farq_fmt} oldin ketdingiz.\n"
                     f"Bu intizom buzilishi! Rahbariyat xabardor qilindi! 🚫")
     except:
         return f"🚪 Ketdi vaqti: {ketdi_vaqt}"
