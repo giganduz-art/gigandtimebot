@@ -1161,6 +1161,12 @@ async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if amal == 'ochir':
             komp_id = context.user_data.get('komp_id')
             x = xodim_olish(xodim_id)
+
+            # Security check: xodim admin'ning tashkilotiga tegishli ekanligini tekshir
+            if not x or x[9] != komp_id:
+                await update.message.reply_text("❌ Bu xodim sizning tashkilotingizga tegishli emas!", reply_markup=adm_menu_kb())
+                return ADM_MENU
+
             xodim_ism = x[1] if x else 'Unknown'
             xodim_ochirish(xodim_id)
 
