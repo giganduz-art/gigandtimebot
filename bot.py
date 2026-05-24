@@ -474,13 +474,13 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
             f"📷 Hikvision: {'✅' if komp[12] else '❌'}\n"
-            f"📡 WiFi aniqlash: {'✅' if komp[16] else '❌'}",
+            f"📡 WiFi IP Adres: {'✅' if komp[16] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📍 GPS", "📡 GPS Live"],
                 ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
-                ["📡 WiFi aniqlash", "🔙 Orqaga"]
+                ["📡 WiFi IP Adres", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
 
@@ -599,7 +599,7 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤳 Selfie":            ("selfie_aktiv", komp[10]),
         "👤 Face ID":           ("face_id_aktiv", komp[11]),
         "📷 Hikvision":         ("hikvision_aktiv", komp[12]),
-        "📡 WiFi aniqlash":     ("wifi_aktiv", komp[16]),
+        "📡 WiFi IP Adres":     ("wifi_aktiv", komp[16]),
     }
     if matn in funksiya_map:
         maydon, hozirgi = funksiya_map[matn]
@@ -613,13 +613,13 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
             f"📷 Hikvision: {'✅' if komp[12] else '❌'}\n"
-            f"📡 WiFi aniqlash: {'✅' if komp[16] else '❌'}",
+            f"📡 WiFi IP Adres: {'✅' if komp[16] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📍 GPS", "📡 GPS Live"],
                 ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
-                ["📡 WiFi aniqlash", "🔙 Orqaga"]
+                ["📡 WiFi IP Adres", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
     return SA_FUNKSIYA
@@ -857,12 +857,13 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_GPS_LOK
 
     elif matn == "📡 WiFi sozlash":
-        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
+        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
         holat = "✅ YONIQ" if wifi_aktiv else "❌ OCHIQ"
         await update.message.reply_text(
-            f"📡 *WiFi Aniqlash Sozlamalari*\n\n"
+            f"📡 *WiFi IP Adres Sozlamalari*\n\n"
             f"Holati: {holat}\n"
-            f"WiFi nomi: {wifi_ssid if wifi_ssid else '(belgilanmagan)'}\n\n"
+            f"📡 SSID: {wifi_ssid if wifi_ssid else '(belgilanmagan)'}\n"
+            f"🌐 IP Address: {wifi_ip if wifi_ip else '(belgilanmagan)'}\n\n"
             f"Qanday qilish kerak?",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
@@ -1321,32 +1322,36 @@ async def adm_hisobot_kun_display(update: Update, context: ContextTypes.DEFAULT_
 # ==================== ADMIN WiFi SETTINGS ====================
 
 async def adm_wifi_aktiv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """WiFi aniqlash yoq/on"""
+    """WiFi IP Adres yoq/on"""
     komp_id = context.user_data.get('komp_id')
     matn = update.message.text.strip()
 
     if matn == "✅ Yoqish":
-        wifi_aktiv, wifi_ssid = get_wifi(komp_id)
-        if not wifi_ssid:
+        wifi_aktiv, wifi_ssid, wifi_ip = get_wifi(komp_id)
+        if not wifi_ssid or not wifi_ip:
             await update.message.reply_text(
-                "📡 Avval WiFi nomini kiriting (SSID):\n\n"
+                "📡 WiFi nomini kiriting (SSID):\n\n"
                 "Masalan: GIGAND_OFFICE",
                 reply_markup=ReplyKeyboardRemove())
+            context.user_data['wifi_step'] = 'ssid'
             return ADM_WIFI_SSID
-        wifi_sozla(komp_id, True, wifi_ssid)
-        await update.message.reply_text(f"✅ WiFi yoqildi! SSID: {wifi_ssid}", reply_markup=adm_menu_kb())
+        wifi_sozla(komp_id, True, wifi_ssid, wifi_ip)
+        await update.message.reply_text(
+            f"✅ WiFi yoqildi!\n📡 SSID: {wifi_ssid}\n🌐 IP: {wifi_ip}",
+            reply_markup=adm_menu_kb())
         return ADM_MENU
 
     elif matn == "❌ O'chirish":
-        wifi_sozla(komp_id, False, "")
+        wifi_sozla(komp_id, False, "", "")
         await update.message.reply_text("✅ WiFi o'chirildi!", reply_markup=adm_menu_kb())
         return ADM_MENU
 
     elif matn == "✏️ Nomini o'zgartirish":
         await update.message.reply_text(
-            "📡 Yangi WiFi nomini kiriting (SSID):\n\n"
+            "📡 WiFi nomini kiriting (SSID):\n\n"
             "Masalan: 112233",
             reply_markup=ReplyKeyboardRemove())
+        context.user_data['wifi_step'] = 'ssid'
         return ADM_WIFI_SSID
 
     elif matn == "🔙 Orqaga":
@@ -1356,20 +1361,39 @@ async def adm_wifi_aktiv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADM_WIFI_AKTIV
 
 async def adm_wifi_ssid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """WiFi nomi o'rnatish"""
+    """WiFi SSID va IP address o'rnatish"""
     komp_id = context.user_data.get('komp_id')
-    ssid = update.message.text.strip()
+    wifi_step = context.user_data.get('wifi_step', 'ssid')
+    matn = update.message.text.strip()
 
-    if not ssid or len(ssid) < 2:
-        await update.message.reply_text("❌ Haqiqiy WiFi nomini kiriting!")
+    if wifi_step == 'ssid':
+        if not matn or len(matn) < 2:
+            await update.message.reply_text("❌ Haqiqiy WiFi nomini kiriting!")
+            return ADM_WIFI_SSID
+
+        context.user_data['temp_wifi_ssid'] = matn
+        context.user_data['wifi_step'] = 'ip'
+        await update.message.reply_text(
+            "🌐 Endi WiFi IP Address'ni kiriting:\n\n"
+            "Masalan: 192.168.1.1",
+            reply_markup=ReplyKeyboardRemove())
         return ADM_WIFI_SSID
 
-    wifi_aktiv, _ = get_wifi(komp_id)
-    wifi_sozla(komp_id, wifi_aktiv or True, ssid)
-    await update.message.reply_text(
-        f"✅ WiFi nomi saqlandi: {ssid}\n"
-        f"Holati: {'✅ YONIQ' if wifi_aktiv else '✅ YOQILDI'}",
-        reply_markup=adm_menu_kb())
+    elif wifi_step == 'ip':
+        if not matn or len(matn) < 7:
+            await update.message.reply_text("❌ Haqiqiy IP address'ni kiriting!")
+            return ADM_WIFI_SSID
+
+        ssid = context.user_data.get('temp_wifi_ssid', '')
+        wifi_aktiv, _, _ = get_wifi(komp_id)
+        wifi_sozla(komp_id, wifi_aktiv or True, ssid, matn)
+
+        await update.message.reply_text(
+            f"✅ WiFi saqlandi!\n📡 SSID: {ssid}\n🌐 IP: {matn}\n"
+            f"Holati: {'✅ YONIQ' if wifi_aktiv else '✅ YOQILDI'}",
+            reply_markup=adm_menu_kb())
+        context.user_data.pop('temp_wifi_ssid', None)
+        context.user_data.pop('wifi_step', None)
     return ADM_MENU
 
 # ==================== HR PANEL ====================

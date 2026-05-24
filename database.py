@@ -48,6 +48,7 @@ def create_tables():
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS live_gps_tekshiruv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_aktiv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_ssid TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_ip TEXT DEFAULT ''")
 
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
         id SERIAL PRIMARY KEY, ism TEXT NOT NULL, telefon TEXT, kod TEXT,
@@ -207,7 +208,7 @@ def kompaniya_olish(komp_id):
     cur.execute('''SELECT id,nomi,admin_telefon,admin_id,holat,
                   gps_lat,gps_lon,gps_radius,yaratilgan,
                   gps_aktiv,selfie_aktiv,face_id_aktiv,hikvision_aktiv,admin_kod,
-                  live_gps_aktiv,live_gps_tekshiruv,wifi_aktiv,wifi_ssid FROM kompaniyalar WHERE id=%s''', (komp_id,))
+                  live_gps_aktiv,live_gps_tekshiruv,wifi_aktiv,wifi_ssid,wifi_ip FROM kompaniyalar WHERE id=%s''', (komp_id,))
     r = cur.fetchone(); cur.close(); conn.close(); return r
 
 def kompaniya_holat_ozgartir(komp_id, holat):
@@ -242,16 +243,17 @@ def get_gps(komp_id):
     return r if r else (41.299496, 69.240073, 200)
 
 def get_wifi(komp_id):
-    """WiFi sozlamalarini olish"""
+    """WiFi sozlamalarini olish (SSID va IP address)"""
     conn = connect(); cur = conn.cursor()
-    cur.execute("SELECT wifi_aktiv,wifi_ssid FROM kompaniyalar WHERE id=%s", (komp_id,))
+    cur.execute("SELECT wifi_aktiv,wifi_ssid,wifi_ip FROM kompaniyalar WHERE id=%s", (komp_id,))
     r = cur.fetchone(); cur.close(); conn.close()
-    return r if r else (False, "")
+    return r if r else (False, "", "")
 
-def wifi_sozla(komp_id, aktiv, ssid):
-    """WiFi sozlamalarini o'rnatish"""
+def wifi_sozla(komp_id, aktiv, ssid, ip=""):
+    """WiFi sozlamalarini o'rnatish (SSID va IP address)"""
     conn = connect(); cur = conn.cursor()
-    cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s WHERE id=%s", (aktiv, ssid, komp_id))
+    cur.execute("UPDATE kompaniyalar SET wifi_aktiv=%s,wifi_ssid=%s,wifi_ip=%s WHERE id=%s",
+                (aktiv, ssid, ip, komp_id))
     conn.commit(); cur.close(); conn.close()
 
 def komp_bugun_rasmlar(komp_id):
