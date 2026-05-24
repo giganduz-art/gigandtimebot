@@ -1821,8 +1821,14 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _, vaqt, kechikish = natija.split("|")
             msg = f"✅ Keldi vaqti: {vaqt}"
             if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
-            await update.message.reply_text(f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
+            # FAQAT VIDEO BUTTON
+            video_kb = ReplyKeyboardMarkup([
+                ["📹 Video yubor"],
+                ["❌ Bekor"]
+            ], resize_keyboard=True, one_time_keyboard=True)
+            await update.message.reply_text(f"{msg}\n\n📹 Video yuboring (dumaloq video yoki selfie):", reply_markup=video_kb)
             context.user_data['keldi_m'] = 0
+            context.user_data['keldi_rasm_waiting'] = True
             return XOD_KELDI_RASM
 
     elif matn == "🚪 Ketdim":
@@ -1852,8 +1858,14 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             xodim = xodim_olish(xodim_id)
             s = int(float(ish_soat)); d = int((float(ish_soat) - s) * 60)
             msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa"
-            await update.message.reply_text(f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:", reply_markup=ReplyKeyboardRemove())
+            # FAQAT VIDEO BUTTON
+            video_kb = ReplyKeyboardMarkup([
+                ["📹 Video yubor"],
+                ["❌ Bekor"]
+            ], resize_keyboard=True, one_time_keyboard=True)
+            await update.message.reply_text(f"{msg}\n\n📹 Video yuboring (dumaloq video yoki selfie):", reply_markup=video_kb)
             context.user_data['ketdi_m'] = 0
+            context.user_data['ketdi_rasm_waiting'] = True
             return XOD_KETDI_RASM
 
     if matn == "✍️ Manual davomat":
@@ -2063,12 +2075,16 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = f"✅ Keldi vaqti: {vaqt}"
             if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
 
-            # Selfie yoki video so'ra
+            # Selfie yoki video so'ra - FAQAT VIDEO
             context.user_data['keldi_m'] = 0
             context.user_data['keldi_rasm_waiting'] = True  # Flag for audio rejection handler
+            video_kb = ReplyKeyboardMarkup([
+                ["📹 Video yubor"],
+                ["❌ Bekor"]
+            ], resize_keyboard=True, one_time_keyboard=True)
             await update.message.reply_text(
-                f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:",
-                reply_markup=ReplyKeyboardRemove())
+                f"{msg}\n\n📹 Video yuboring (dumaloq video yoki selfie):",
+                reply_markup=video_kb)
             return XOD_KELDI_RASM
 
     elif matn == "🚪 Ketdim":
@@ -2100,12 +2116,16 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['ketdi_ish_soat'] = ish_soat
             context.user_data['ketdi_ish_tugash'] = ish_tugash
 
-            # Selfie yoki video so'ra
+            # Selfie yoki video so'ra - FAQAT VIDEO
             context.user_data['ketdi_m'] = 0
             context.user_data['ketdi_rasm_waiting'] = True  # Flag for audio rejection handler
+            video_kb = ReplyKeyboardMarkup([
+                ["📹 Video yubor"],
+                ["❌ Bekor"]
+            ], resize_keyboard=True, one_time_keyboard=True)
             await update.message.reply_text(
-                f"✅ Ketdi vaqti: {vaqt}\n\n📸 Selfie yoki 🎥 video yuboring:",
-                reply_markup=ReplyKeyboardRemove())
+                f"✅ Ketdi vaqti: {vaqt}\n\n📹 Video yuboring (dumaloq video yoki selfie):",
+                reply_markup=video_kb)
             return XOD_KETDI_RASM
 
     elif matn == "📋 Davomatim":
@@ -2280,8 +2300,17 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "☰ Menu" or matn == "🏠 Bosh menu":
         return await start(update, context)
 
+    # Cancel button
+    if matn == "❌ Bekor":
+        context.user_data['keldi_rasm_waiting'] = False
+        await update.message.reply_text("❌ Bekor qilindi", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!", reply_markup=restart_kb())
+        await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
+            ["📹 Video yubor"],
+            ["❌ Bekor"]
+        ], resize_keyboard=True, one_time_keyboard=True))
         return XOD_KELDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
@@ -2350,8 +2379,17 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "☰ Menu" or matn == "🏠 Bosh menu":
         return await start(update, context)
 
+    # Cancel button
+    if matn == "❌ Bekor":
+        context.user_data['ketdi_rasm_waiting'] = False
+        await update.message.reply_text("❌ Bekor qilindi", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!", reply_markup=restart_kb())
+        await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
+            ["📹 Video yubor"],
+            ["❌ Bekor"]
+        ], resize_keyboard=True, one_time_keyboard=True))
         return XOD_KETDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
