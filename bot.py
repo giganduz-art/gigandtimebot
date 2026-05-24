@@ -1433,6 +1433,13 @@ async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 xabar += "\n"
             await update.message.reply_text(xabar, parse_mode='Markdown')
         return ADM_DAV_MENU
+    elif matn == "📆 Sana bo'yicha":
+        await update.message.reply_text(
+            "📅 Sana kiriting (YYYY-MM-DD):\n\n"
+            "Misol: 2026-05-24",
+            reply_markup=ReplyKeyboardRemove())
+        context.user_data['dav_amal'] = 'sana_boyicha'
+        return ADM_DAV_SANA
     elif matn == "📊 Barchasi":
         davomatlar = kompaniya_davomati(komp_id)
         if not davomatlar:
@@ -1482,7 +1489,8 @@ async def adm_dav_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     if matn == "🔙 Orqaga":
         await update.message.reply_text("📅 Davomat:", reply_markup=ReplyKeyboardMarkup([
-            ["📋 Bugungi","📊 Barchasi"],["✍️ Kiritish","✏️ Tahrirlash"],["🔙 Orqaga"]
+            ["📋 Bugungi","📊 Barchasi"],["📆 Sana bo'yicha","✍️ Kiritish"],
+            ["✏️ Tahrirlash","🔙 Orqaga"]
         ], resize_keyboard=True))
         return ADM_DAV_MENU
     try:
@@ -1509,7 +1517,52 @@ async def adm_dav_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: return ADM_DAV_XODIM
 
 async def adm_dav_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['dav_sana'] = update.message.text.strip()
+    sana_matn = update.message.text.strip()
+
+    # Handle date-based view
+    if context.user_data.get('dav_amal') == 'sana_boyicha':
+        komp_id = context.user_data.get('komp_id')
+        komp = kompaniya_olish(komp_id)
+        komp_nomi = komp[1] if komp else "Noma'lum"
+
+        # Validate date format
+        if len(sana_matn) != 10 or sana_matn[4] != '-' or sana_matn[7] != '-':
+            await update.message.reply_text(
+                f"❌ Noto'g'ri format!\n\n"
+                f"Iltimos format shunga mos kelsin: YYYY-MM-DD\n"
+                f"Misol: 2026-05-24",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_DAV_SANA
+
+        try:
+            davomatlar = kompaniya_davomati(komp_id, sana_matn)
+
+            if not davomatlar:
+                await update.message.reply_text(
+                    f"❌ {sana_matn} sanada davomat yo'q!",
+                    reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+                return ADM_DAV_SANA
+
+            xabar = f"📅 *{sana_matn}:*\n\n"
+            xabar += f"👥 Jami: {len(davomatlar)} ta xodim\n\n"
+
+            for d in davomatlar:
+                ism, sana, keldi, ketdi, ish_soat, kechikish, holat = d[0], d[1], d[2], d[3], d[4], d[5], d[6]
+                xabar += f"👤 *{ism}*: {keldi or '—'} → {ketdi or '—'}"
+                if kechikish and kechikish > 0:
+                    xabar += f" ⚠️{kechikish_format(kechikish)}"
+                xabar += "\n"
+
+            await update.message.reply_text(xabar, parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_DAV_SANA
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_DAV_SANA
+
+    # Handle manual entry - original behavior
+    context.user_data['dav_sana'] = sana_matn
     await update.message.reply_text("⏰ Keldi vaqti (09:00):")
     return ADM_DAV_KELDI
 
