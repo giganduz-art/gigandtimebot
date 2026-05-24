@@ -74,13 +74,13 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     HR_MENU, HR_MAN_XODIM, HR_MAN_SANA, HR_MAN_KELDI,
     HR_MAN_KETDI, HR_MAN_HOLAT, HR_MAN_IZOH,
     HR_VIEW_XODIM, HR_VIEW_SANA,
-    XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM,
-    XOD_KETDI_GPS, XOD_KETDI_RASM,
+    XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM, XOD_KELDI_AUDIO,
+    XOD_KETDI_GPS, XOD_KETDI_RASM, XOD_KETDI_AUDIO,
     XOD_SABAB_SANA, XOD_SABAB_MATN,
     SA_KOMP_DELETE_KOD,
     SA_HISOBOT_SANA, SA_HISOBOT_KUN,
     SA_XODIM_DELETE_KOD, ADM_XODIM_DELETE_KOD,
-) = range(68)
+) = range(70)
 
 # ==================== MENYULAR ====================
 
@@ -2065,6 +2065,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Selfie yoki video so'ra
             context.user_data['keldi_m'] = 0
+            context.user_data['keldi_rasm_waiting'] = True  # Flag for audio rejection handler
             await update.message.reply_text(
                 f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:",
                 reply_markup=ReplyKeyboardRemove())
@@ -2101,6 +2102,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Selfie yoki video so'ra
             context.user_data['ketdi_m'] = 0
+            context.user_data['ketdi_rasm_waiting'] = True  # Flag for audio rejection handler
             await update.message.reply_text(
                 f"✅ Ketdi vaqti: {vaqt}\n\n📸 Selfie yoki 🎥 video yuboring:",
                 reply_markup=ReplyKeyboardRemove())
@@ -2258,6 +2260,20 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:",
         reply_markup=restart_kb())
     return XOD_KELDI_RASM
+
+async def xod_reject_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reject audio/voice messages - only video/photo allowed"""
+    await update.message.reply_text(
+        "❌ Audio/ovoz qabul qilinmaydi!\n\n"
+        "📸 Faqat: Selfie yoki dumaloq video yuboring",
+        reply_markup=ReplyKeyboardRemove())
+    # Return to the appropriate state based on which rasm we're waiting for
+    if context.user_data.get('keldi_rasm_waiting'):
+        return XOD_KELDI_RASM
+    elif context.user_data.get('ketdi_rasm_waiting'):
+        return XOD_KETDI_RASM
+    else:
+        return XOD_MENU
 
 async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
@@ -2935,8 +2951,10 @@ def main():
             XOD_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_menu_handler)],
             XOD_KELDI_GPS: [MessageHandler(filters.LOCATION, xod_keldi_gps)],
             XOD_KELDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_keldi_rasm)],
+            XOD_KELDI_AUDIO: [MessageHandler(filters.VOICE | filters.AUDIO, xod_reject_audio)],
             XOD_KETDI_GPS: [MessageHandler(filters.LOCATION, xod_ketdi_gps)],
             XOD_KETDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_ketdi_rasm)],
+            XOD_KETDI_AUDIO: [MessageHandler(filters.VOICE | filters.AUDIO, xod_reject_audio)],
             XOD_SABAB_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_sabab_sana)],
             XOD_SABAB_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_sabab_matn)],
         },
