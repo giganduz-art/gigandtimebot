@@ -1996,12 +1996,6 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ {xodim_ism} uchun bu davomatda ma'lumot topilmadi!", reply_markup=hr_menu_kb())
             return HR_MENU
 
-        # DEBUG: Log what we're getting from database
-        print(f"DEBUG HR_VIEW: xodim_id={xodim_id}, records={len(davomatlar)}")
-        if davomatlar:
-            print(f"DEBUG HR_VIEW: First record fields count: {len(davomatlar[0])}")
-            print(f"DEBUG HR_VIEW: First record data: {davomatlar[0]}")
-
         xabar = f"📋 *{xodim_ism} Davomati*\n\n"
 
         for dav in davomatlar:
