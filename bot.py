@@ -787,41 +787,50 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def sa_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Super Admin o'chirish kodi tekshiruvi"""
-    kod = update.message.text.strip()
-    user_id = update.effective_user.id
+    try:
+        kod = update.message.text.strip()
+        user_id = update.effective_user.id
 
-    # Super Admin kodini tekshir
-    if not super_admin_kod_tekshir(kod):
-        await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=sa_menu_kb())
-        return SA_MENU
+        # Super Admin kodini tekshir
+        if not super_admin_kod_tekshir(kod):
+            await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=sa_menu_kb())
+            return SA_MENU
 
-    # Kod to'g'ri, xodimni o'chir
-    komp_id = context.user_data.get('sa_komp_id')
-    xodim_id = context.user_data.get('tahrir_xodim_id')
-    xodim_ism = context.user_data.get('delete_xodim_ism', 'Unknown')
+        # Kod to'g'ri, xodimni o'chir
+        komp_id = context.user_data.get('sa_komp_id')
+        xodim_id = context.user_data.get('tahrir_xodim_id')
+        xodim_ism = context.user_data.get('delete_xodim_ism', 'Unknown')
 
-    xodim_ochirish(xodim_id)
+        if not xodim_id or not komp_id:
+            await update.message.reply_text("❌ Xatolik: Ma'lumot yo'q!", reply_markup=sa_menu_kb())
+            return SA_MENU
 
-    # AUDIT LOG
-    user_ism = update.effective_user.first_name or 'Super Admin'
-    tafsilot = f"Xodim o'chirildi: {xodim_ism}"
-    audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+        xodim_ochirish(xodim_id)
 
-    # Show xodim list again
-    xodimlar = kompaniya_xodimlari(komp_id)
-    if not xodimlar:
-        await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 Boshqa xodim yo'q.", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        # AUDIT LOG
+        user_ism = update.effective_user.first_name or 'Super Admin'
+        tafsilot = f"Xodim o'chirildi: {xodim_ism}"
+        audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+        # Show xodim list again
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 Boshqa xodim yo'q.", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_KOMP_XODIM_TANLASH
+
+        xabar = "🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n\n"
+        tugmalar = []
+        for x in xodimlar:
+            xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
+            tugmalar.append([f"{x[0]}. {x[1]}"])
+        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return SA_KOMP_XODIM_TANLASH
-
-    xabar = "🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n\n"
-    tugmalar = []
-    for x in xodimlar:
-        xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
-        tugmalar.append([f"{x[0]}. {x[1]}"])
-    tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
-    await update.message.reply_text(xabar, parse_mode='Markdown',
-        reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
-    return SA_KOMP_XODIM_TANLASH
+    except Exception as e:
+        logger.error(f"Super Admin xodim o'chirish xatosi: {e}")
+        await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=sa_menu_kb())
+        return SA_MENU
 
 async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
@@ -1208,32 +1217,40 @@ async def adm_xodim_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def adm_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin o'chirish kodi tekshiruvi"""
-    kod = update.message.text.strip()
-    user_id = update.effective_user.id
-    komp_id = context.user_data.get('komp_id')
+    try:
+        kod = update.message.text.strip()
+        user_id = update.effective_user.id
+        komp_id = context.user_data.get('komp_id')
+        xodim_id = context.user_data.get('tahrir_xodim_id')
+        xodim_ism = context.user_data.get('delete_xodim_ism', 'Unknown')
 
-    # Admin kodini tekshir
-    conn = connect(); cur = conn.cursor()
-    cur.execute("SELECT admin_kod FROM kompaniyalar WHERE id=%s", (komp_id,))
-    row = cur.fetchone(); cur.close(); conn.close()
+        if not xodim_id or not komp_id:
+            await update.message.reply_text("❌ Xatolik: Ma'lumot yo'q!", reply_markup=adm_menu_kb())
+            return ADM_MENU
 
-    if not row or row[0] != kod:
-        await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=adm_menu_kb())
+        # Admin kodini tekshir
+        conn = connect(); cur = conn.cursor()
+        cur.execute("SELECT admin_kod FROM kompaniyalar WHERE id=%s", (komp_id,))
+        row = cur.fetchone(); cur.close(); conn.close()
+
+        if not row or row[0] != kod:
+            await update.message.reply_text("❌ Noto'g'ri kod! O'chirish bekor qilindi.", reply_markup=adm_menu_kb())
+            return ADM_MENU
+
+        # Kod to'g'ri, xodimni o'chir
+        xodim_ochirish(xodim_id)
+
+        # AUDIT LOG
+        user_ism = update.effective_user.first_name or 'Admin'
+        tafsilot = f"Xodim o'chirildi: {xodim_ism}"
+        audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+        await update.message.reply_text("🗑 Xodim o'chirildi! ✅", reply_markup=adm_menu_kb())
         return ADM_MENU
-
-    # Kod to'g'ri, xodimni o'chir
-    xodim_id = context.user_data.get('tahrir_xodim_id')
-    xodim_ism = context.user_data.get('delete_xodim_ism', 'Unknown')
-
-    xodim_ochirish(xodim_id)
-
-    # AUDIT LOG
-    user_ism = update.effective_user.first_name or 'Admin'
-    tafsilot = f"Xodim o'chirildi: {xodim_ism}"
-    audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
-
-    await update.message.reply_text("🗑 Xodim o'chirildi! ✅", reply_markup=adm_menu_kb())
-    return ADM_MENU
+    except Exception as e:
+        logger.error(f"Admin xodim o'chirish xatosi: {e}")
+        await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=adm_menu_kb())
+        return ADM_MENU
 
 async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
