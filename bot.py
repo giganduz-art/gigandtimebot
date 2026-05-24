@@ -2,7 +2,8 @@ import os, math, logging, random, string, threading
 from datetime import datetime, time as dtime, timedelta
 import pytz
 from telegram import (Update, ReplyKeyboardMarkup, KeyboardButton,
-                      InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, WebAppInfo)
+                      InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove, WebAppInfo,
+                      BotCommand, ChatMenuButton)
 from telegram.ext import (Application, CommandHandler, MessageHandler,
                           CallbackQueryHandler, ConversationHandler, filters, ContextTypes)
 from database import *
@@ -2379,12 +2380,23 @@ def wifi_verify():
 
 # ==================== MAIN ====================
 
+async def post_init(app: Application):
+    """Setup bot commands and menu button"""
+    commands = [
+        BotCommand("start", "🏠 Boshlash / Start"),
+    ]
+    await app.bot.set_my_commands(commands)
+    # Set main menu button
+    menu_button = ChatMenuButton()
+    await app.bot.set_chat_menu_button(menu_button=menu_button)
+
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN environment variable not set!")
     create_tables()
     print("Baza tayyor!")
     app = Application.builder().token(BOT_TOKEN).build()
+    app.post_init = post_init
 
     conv = ConversationHandler(
         entry_points=[
