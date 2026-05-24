@@ -12,8 +12,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable not set!")
 TASHKENT = pytz.timezone('Asia/Tashkent')
 
 def random_kod(n=6):
@@ -2326,6 +2324,8 @@ def wifi_verify():
 # ==================== MAIN ====================
 
 def main():
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN environment variable not set!")
     create_tables()
     print("Baza tayyor!")
     app = Application.builder().token(BOT_TOKEN).build()
