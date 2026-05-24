@@ -1799,8 +1799,8 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xodim_ism = xodim[1] if xodim else "Noma'lum"
 
     try:
-        # Check if it's a month or specific date
-        davomatlar = xodim_davomati(xodim_id, sana_matn if len(sana_matn) == 7 else None)
+        # xodim_davomati uses LIKE filter, so both "2026-05" and "2026-05-24" will work
+        davomatlar = xodim_davomati(xodim_id, sana_matn)
 
         if not davomatlar:
             await update.message.reply_text(f"❌ {xodim_ism} uchun bu davomatda ma'lumot topilmadi!", reply_markup=hr_menu_kb())
