@@ -362,9 +362,12 @@ def xodim_qoshish(ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol,
 
 def xodim_ochirish(xodim_id):
     conn = connect(); cur = conn.cursor()
+    # Birinchi, barcha related records'ni o'chir (FK constraints)
+    cur.execute("DELETE FROM audit_log WHERE xodim_id=%s", (xodim_id,))
     cur.execute("DELETE FROM live_lokatsiyalar WHERE xodim_id=%s", (xodim_id,))
     cur.execute("DELETE FROM sababli_sorovlar WHERE xodim_id=%s", (xodim_id,))
     cur.execute("DELETE FROM davomat WHERE xodim_id=%s", (xodim_id,))
+    # Keyin xodimni o'chir
     cur.execute("DELETE FROM xodimlar WHERE id=%s", (xodim_id,))
     conn.commit(); cur.close(); conn.close()
 
