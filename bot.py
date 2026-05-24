@@ -868,7 +868,8 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["✅ Yoqish", "❌ O'chirish"],
-                ["✏️ Nomini o'zgartirish", "🔙 Orqaga"]
+                ["✏️ SSID nomini o'zgartirish", "✏️ IP address'ni o'zgartirish"],
+                ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return ADM_WIFI_AKTIV
 
@@ -1346,12 +1347,20 @@ async def adm_wifi_aktiv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ WiFi o'chirildi!", reply_markup=adm_menu_kb())
         return ADM_MENU
 
-    elif matn == "✏️ Nomini o'zgartirish":
+    elif matn == "✏️ SSID nomini o'zgartirish":
         await update.message.reply_text(
-            "📡 WiFi nomini kiriting (SSID):\n\n"
+            "📡 Yangi WiFi nomini kiriting (SSID):\n\n"
             "Masalan: 112233",
             reply_markup=ReplyKeyboardRemove())
         context.user_data['wifi_step'] = 'ssid'
+        return ADM_WIFI_SSID
+
+    elif matn == "✏️ IP address'ni o'zgartirish":
+        await update.message.reply_text(
+            "🌐 Yangi IP address'ni kiriting:\n\n"
+            "Masalan: 192.168.1.1",
+            reply_markup=ReplyKeyboardRemove())
+        context.user_data['wifi_step'] = 'ip'
         return ADM_WIFI_SSID
 
     elif matn == "🔙 Orqaga":
@@ -1384,8 +1393,11 @@ async def adm_wifi_ssid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Haqiqiy IP address'ni kiriting!")
             return ADM_WIFI_SSID
 
-        ssid = context.user_data.get('temp_wifi_ssid', '')
-        wifi_aktiv, _, _ = get_wifi(komp_id)
+        wifi_aktiv, wifi_ssid, _ = get_wifi(komp_id)
+
+        # Agar temp SSID mavjud bo'lsa (yangi setup) uni ishlatsin, yoki mavjud SSIDni saqlasin (IP tahrirlash)
+        ssid = context.user_data.get('temp_wifi_ssid', '') or wifi_ssid
+
         wifi_sozla(komp_id, wifi_aktiv or True, ssid, matn)
 
         await update.message.reply_text(
