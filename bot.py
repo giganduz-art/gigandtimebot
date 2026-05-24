@@ -1496,9 +1496,9 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "✅ Keldim":
         wifi_aktiv, wifi_ssid = get_wifi(komp_id)
 
-        if wifi_aktiv and wifi_ssid:  # WiFi aniqlash aktiv
+        if wifi_aktiv and wifi_ssid:  # WiFi IP Adres aktiv
             await update.message.reply_text(
-                f"📡 *WiFi ANIQLASH*\n\n"
+                f"📡 *WiFi IP ADRES*\n\n"
                 f"Ish joyi WiFi-ga ('*{wifi_ssid}*') ulanganmisiz?\n\n"
                 f"📡 Ulangan → avtamatik Keldim\n"
                 f"📍 Ulanmagan → GPS kerak",
@@ -1545,9 +1545,9 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matn == "🚪 Ketdim":
         wifi_aktiv, wifi_ssid = get_wifi(komp_id)
 
-        if wifi_aktiv and wifi_ssid:  # WiFi aniqlash aktiv
+        if wifi_aktiv and wifi_ssid:  # WiFi IP Adres aktiv
             await update.message.reply_text(
-                f"📡 *WiFi ANIQLASH*\n\n"
+                f"📡 *WiFi IP ADRES*\n\n"
                 f"Ish joyi WiFi-ga ('*{wifi_ssid}*') ulanganmisiz?\n\n"
                 f"📡 Ulangan → avtamatik Ketdim\n"
                 f"📍 Ulanmagan → GPS kerak",
