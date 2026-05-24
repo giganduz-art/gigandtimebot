@@ -466,7 +466,7 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["📝 Nomi", "📞 Admin telefon"],
                 ["🔑 Admin kodi", "📍 GPS"],
                 ["📏 Radius", "📡 WiFi SSID"],
-                ["📡 WiFi IP Adres", "🔙 Orqaga"]
+                ["📡 WiFi", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_AMAL
 
@@ -480,13 +480,13 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
             f"📷 Hikvision: {'✅' if komp[12] else '❌'}\n"
-            f"📡 WiFi IP Adres: {'✅' if komp[16] else '❌'}",
+            f"📡 WiFi: {'✅' if komp[16] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📍 GPS", "📡 GPS Live"],
                 ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
-                ["📡 WiFi IP Adres", "🔙 Orqaga"]
+                ["📡 WiFi", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
 
@@ -555,7 +555,7 @@ async def sa_komp_amal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     maydon_map = {
         "📝 Nomi": "nomi", "📞 Admin telefon": "admin_telefon",
         "🔑 Admin kodi": "admin_kod", "📏 Radius": "gps_radius",
-        "📡 WiFi SSID": "wifi_ssid", "📡 WiFi IP Adres": "wifi_ip",
+        "📡 WiFi SSID": "wifi_ssid", "🔗 WiFi MAC": "wifi_mac",
     }
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
@@ -605,7 +605,7 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤳 Selfie":            ("selfie_aktiv", komp[10]),
         "👤 Face ID":           ("face_id_aktiv", komp[11]),
         "📷 Hikvision":         ("hikvision_aktiv", komp[12]),
-        "📡 WiFi IP Adres":     ("wifi_aktiv", komp[16]),
+        "📡 WiFi":     ("wifi_aktiv", komp[16]),
     }
     if matn in funksiya_map:
         maydon, hozirgi = funksiya_map[matn]
@@ -619,13 +619,13 @@ async def sa_funksiya(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🤳 Selfie: {'✅' if komp[10] else '❌'}\n"
             f"👤 Face ID: {'✅' if komp[11] else '❌'}\n"
             f"📷 Hikvision: {'✅' if komp[12] else '❌'}\n"
-            f"📡 WiFi IP Adres: {'✅' if komp[16] else '❌'}",
+            f"📡 WiFi: {'✅' if komp[16] else '❌'}",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📍 GPS", "📡 GPS Live"],
                 ["⏱ 30-daqiqa tekshiruv", "🤳 Selfie"],
                 ["👤 Face ID", "📷 Hikvision"],
-                ["📡 WiFi IP Adres", "🔙 Orqaga"]
+                ["📡 WiFi", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_FUNKSIYA
     return SA_FUNKSIYA
