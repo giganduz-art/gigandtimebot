@@ -110,6 +110,12 @@ def xod_menu_kb():
         ["📝 Sababli so'rov", "🏠 Bosh menu"]
     ], resize_keyboard=True)
 
+def restart_kb():
+    """Keyboard with restart/home menu button"""
+    return ReplyKeyboardMarkup([
+        ["🏠 Bosh menu"]
+    ], resize_keyboard=True)
+
 def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
     """WiFi prompt with Telegram WebApp"""
     base_url = os.environ.get('APP_URL', 'https://gigandtimebot-production.up.railway.app')
@@ -1795,12 +1801,16 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['keldi_m'] = m
     await update.message.reply_text(
         f"{msg}\n\n📸 Selfie yoki 🎥 video yuboring:",
-        reply_markup=ReplyKeyboardRemove())
+        reply_markup=restart_kb())
     return XOD_KELDI_RASM
 
 async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🏠 Bosh menu":
+        return await start(update, context)
+
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!")
+        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!", reply_markup=restart_kb())
         return XOD_KELDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
@@ -1861,12 +1871,16 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"{xabar}\n\n📸 Selfie yoki 🎥 video yuboring:",
         parse_mode='Markdown',
-        reply_markup=ReplyKeyboardRemove())
+        reply_markup=restart_kb())
     return XOD_KETDI_RASM
 
 async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🏠 Bosh menu":
+        return await start(update, context)
+
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!")
+        await update.message.reply_text("❌ Selfie yoki dumaloq video yuboring!", reply_markup=restart_kb())
         return XOD_KETDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
