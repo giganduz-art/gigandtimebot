@@ -474,13 +474,31 @@ def davomat_tahrirlash(davomat_id, maydon, qiymat):
     conn.commit(); cur.close(); conn.close()
 
 def xodim_davomati(xodim_id, oy=None):
+    """Get attendance records - TEXT DATA ONLY (no media/photos/videos)"""
     conn = connect(); cur = conn.cursor()
     if oy:
+        # IMPORTANT: ONLY select text fields, NEVER select keldi_rasm or ketdi_rasm
         cur.execute('''SELECT id,sana,keldi,ketdi,ish_soat,kechikish,holat,izoh,kiritdi
                       FROM davomat WHERE xodim_id=%s AND sana LIKE %s ORDER BY sana''',
                     (xodim_id, f"%{oy}%"))
     else:
+        # IMPORTANT: ONLY select text fields, NEVER select keldi_rasm or ketdi_rasm
         cur.execute('''SELECT id,sana,keldi,ketdi,ish_soat,kechikish,holat,izoh,kiritdi
+                      FROM davomat WHERE xodim_id=%s ORDER BY sana DESC''', (xodim_id,))
+    r = cur.fetchall(); cur.close(); conn.close(); return r
+
+def xodim_davomati_text_only(xodim_id, oy=None):
+    """Get attendance records - TEXT DATA ONLY (no media/photos/videos)
+    CRITICAL SECURITY: Used by HR attendance viewing to ensure no rasm_id or video_id is shown"""
+    conn = connect(); cur = conn.cursor()
+    if oy:
+        # CRITICAL SECURITY: ONLY select text fields, NEVER select keldi_rasm or ketdi_rasm
+        cur.execute('''SELECT id,sana,keldi,ketdi,ish_soat,kechikish,holat
+                      FROM davomat WHERE xodim_id=%s AND sana LIKE %s ORDER BY sana''',
+                    (xodim_id, f"%{oy}%"))
+    else:
+        # CRITICAL SECURITY: ONLY select text fields, NEVER select keldi_rasm or ketdi_rasm
+        cur.execute('''SELECT id,sana,keldi,ketdi,ish_soat,kechikish,holat
                       FROM davomat WHERE xodim_id=%s ORDER BY sana DESC''', (xodim_id,))
     r = cur.fetchall(); cur.close(); conn.close(); return r
 

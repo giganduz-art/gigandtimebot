@@ -1989,8 +1989,8 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return HR_MENU
 
     try:
-        # xodim_davomati uses LIKE filter, so both "2026-05" and "2026-05-24" will work
-        davomatlar = xodim_davomati(xodim_id, sana_matn)
+        # SECURITY: Use text-only version to prevent any media/video IDs from being displayed
+        davomatlar = xodim_davomati_text_only(xodim_id, sana_matn)
 
         if not davomatlar:
             await update.message.reply_text(f"❌ {xodim_ism} uchun bu davomatda ma'lumot topilmadi!", reply_markup=hr_menu_kb())
@@ -1999,7 +1999,10 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xabar = f"📋 *{xodim_ism} Davomati*\n\n"
 
         for dav in davomatlar:
+            # SECURITY: Only extract text fields, SKIP izoh (index 7) and kiritdi (index 8)
+            # to prevent any video_ids or media references from being displayed
             sana, keldi, ketdi, ish_soat, kechikish, holat = dav[1], dav[2], dav[3], dav[4], dav[5], dav[6]
+
             xabar += f"📅 *{sana}*\n"
             xabar += f"  ✅ Keldi: {keldi or '—'}\n"
             xabar += f"  🚪 Ketdi: {ketdi or '—'}\n"
@@ -2011,6 +2014,7 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 xabar += f"  ⚠️  Kechikish: {kechikish} daqiqa\n"
             xabar += f"  📊 Holat: {holat}\n\n"
 
+        # SECURITY: Use reply_text ONLY - never reply_photo or reply_video
         await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=hr_menu_kb())
         return HR_MENU
     except Exception as e:
