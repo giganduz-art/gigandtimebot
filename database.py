@@ -813,14 +813,9 @@ def generate_keldi_motivation(xodim, kechikish, streak):
         return msg
     elif kechikish <= 15:
         return f"⚠️ *{ism}!* Bugun {kechikish} daqiqaga kechiktingiz.\nKeying safar vaqtida keling!"
-    elif kechikish <= 60:
-        min_str = kechikish % 60
-        soat_str = kechikish // 60
-        return f"🚨 *DIQQAT!* {ism}, siz {soat_str} soat {min_str} daqiqaga kechiktingiz!\nBu intizom buzilishi!"
     else:
-        soat_str = kechikish // 60
-        min_str = kechikish % 60
-        return f"❌ *JIDDIY OGOHLANTIRISH!* {soat_str} soat {min_str} daqiqaga kechiktingiz!\nHR ga ma'lumot berildi!"
+        kech_fmt = kechikish_format(kechikish)
+        return f"🚨 *DIQQAT!* {ism}, siz {kech_fmt}ga kechiktingiz!\nBu intizom buzilishi!"
 
 def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
     """Ketdi uchun motivatsiya matni"""
@@ -833,9 +828,10 @@ def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
         farq = 0
 
     s = int(ish_soat); d = int((ish_soat - s) * 60)
+    farq_fmt = kechikish_format(abs(farq))
 
     if farq >= 30:
-        return (f"🌙 *QOLIB ISHLASH!* (+{farq} daqiqa ortiqcha)\n"
+        return (f"🌙 *QOLIB ISHLASH!* (+{farq_fmt} ortiqcha)\n"
                 f"🏆 Rahmat, {ism}! Bugun {s} soat {d} daqiqa ishlading.\n"
                 f"Qo'shimcha mehnat ko'rishingiz qadrlanadi! 💪\n"
                 f"{'🔥 ' + str(streak) + ' kunlik streak!' if streak >= 3 else ''}")
@@ -844,9 +840,9 @@ def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
                 f"Yaxshi ish, {ism}!\n⏱ {s} soat {d} daqiqa samarali mehnat. 💼\n"
                 f"{'🔥 Streakingiz: ' + str(streak) + ' kun!' if streak >= 3 else ''}")
     elif farq >= -30:
-        return (f"⚠️ *ERTA KETISH* ({abs(farq)} daqiqa oldin)\n"
+        return (f"⚠️ *ERTA KETISH* ({farq_fmt} oldin)\n"
                 f"{ism}, ish vaqti tugamay ketdingiz.\n"
                 f"Sababini HR ga bildiring! 📋")
     else:
-        return (f"❌ *JIDDIY ERTA KETISH!* ({abs(farq)} daqiqa oldin)\n"
+        return (f"❌ *JIDDIY ERTA KETISH!* ({farq_fmt} oldin)\n"
                 f"Bu intizom buzilishi! HR va admin xabardor qilindi! 🚫")
