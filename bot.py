@@ -73,13 +73,14 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     ADM_HISOBOT_SANA, ADM_HISOBOT_KUN,
     HR_MENU, HR_MAN_XODIM, HR_MAN_SANA, HR_MAN_KELDI,
     HR_MAN_KETDI, HR_MAN_HOLAT, HR_MAN_IZOH,
+    HR_VIEW_XODIM, HR_VIEW_SANA, HR_VIEW_RESULT,
     XOD_MENU, XOD_KELDI_GPS, XOD_KELDI_RASM,
     XOD_KETDI_GPS, XOD_KETDI_RASM,
     XOD_SABAB_SANA, XOD_SABAB_MATN,
     SA_KOMP_DELETE_KOD,
     SA_HISOBOT_SANA, SA_HISOBOT_KUN,
     SA_XODIM_DELETE_KOD, ADM_XODIM_DELETE_KOD,
-) = range(66)
+) = range(69)
 
 # ==================== MENYULAR ====================
 
@@ -101,8 +102,8 @@ def adm_menu_kb():
 
 def hr_menu_kb():
     return ReplyKeyboardMarkup([
-        ["✍️ Manual davomat", "📊 Hisobot"],
-        ["☰ Menu"]
+        ["✍️ Manual davomat", "👁️ Davomatni ko'rish"],
+        ["📊 Hisobot", "☰ Menu"]
     ], resize_keyboard=True)
 
 def xod_menu_kb():
@@ -1691,6 +1692,22 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tugmalar.append(["🔙 Orqaga"])
         await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return HR_MAN_XODIM
+    elif matn == "👁️ Davomatni ko'rish":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!"); return HR_MENU
+
+        # Sequential numbering with ID mapping
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+
+        tugmalar.append(["🔙 Orqaga"])
+        await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return HR_VIEW_XODIM
     elif matn == "📊 Hisobot":
         await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
         try:
@@ -1758,6 +1775,57 @@ async def hr_man_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['dav_holat'], izoh, xodim[1] if xodim else 'HR', update.effective_user.id)
     await update.message.reply_text(natija, reply_markup=hr_menu_kb())
     return HR_MENU
+
+async def hr_view_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu_kb())
+        return HR_MENU
+    try:
+        # Get actual xodim_id from mapping (display number → actual ID)
+        display_num = matn.split(".")[0].strip()
+        xodim_id_map = context.user_data.get('xodim_id_map', {})
+        xodim_id = xodim_id_map.get(display_num, int(display_num))  # Fallback to direct parse if no mapping
+        context.user_data['view_xodim_id'] = xodim_id
+        xodim = xodim_olish(xodim_id)
+        await update.message.reply_text(f"📅 Sana (YYYY-MM-DD) yoki oy (YYYY-MM):\n\nMisol: 2026-05-24 yoki 2026-05", reply_markup=ReplyKeyboardRemove())
+        return HR_VIEW_SANA
+    except: return HR_VIEW_XODIM
+
+async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sana_matn = update.message.text.strip()
+    xodim_id = context.user_data['view_xodim_id']
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    try:
+        # Check if it's a month or specific date
+        davomatlar = xodim_davomati(xodim_id, sana_matn if len(sana_matn) == 7 else None)
+
+        if not davomatlar:
+            await update.message.reply_text(f"❌ {xodim_ism} uchun bu davomatda ma'lumot topilmadi!", reply_markup=hr_menu_kb())
+            return HR_MENU
+
+        xabar = f"📋 *{xodim_ism} Davomati*\n\n"
+
+        for dav in davomatlar:
+            sana, keldi, ketdi, ish_soat, kechikish, holat = dav[1], dav[2], dav[3], dav[4], dav[5], dav[6]
+            xabar += f"📅 *{sana}*\n"
+            xabar += f"  ✅ Keldi: {keldi or '—'}\n"
+            xabar += f"  🚪 Ketdi: {ketdi or '—'}\n"
+            if ish_soat:
+                soat = int(ish_soat)
+                minut = int((ish_soat - soat) * 60)
+                xabar += f"  ⏱️  Ish soati: {soat} soat {minut} daqiqa\n"
+            if kechikish:
+                xabar += f"  ⚠️  Kechikish: {kechikish} daqiqa\n"
+            xabar += f"  📊 Holat: {holat}\n\n"
+
+        await update.message.reply_text(xabar, parse_mode='Markdown', reply_markup=hr_menu_kb())
+        return HR_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=hr_menu_kb())
+        return HR_MENU
 
 # ==================== XODIM PANEL ====================
 
@@ -2661,6 +2729,8 @@ def main():
             HR_MAN_KETDI: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_man_ketdi)],
             HR_MAN_HOLAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_man_holat)],
             HR_MAN_IZOH: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_man_izoh)],
+            HR_VIEW_XODIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_view_xodim)],
+            HR_VIEW_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_view_sana)],
             XOD_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_menu_handler)],
             XOD_KELDI_GPS: [MessageHandler(filters.LOCATION, xod_keldi_gps)],
             XOD_KELDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_keldi_rasm)],
