@@ -1308,7 +1308,7 @@ async def adm_hisobot_kun_display(update: Update, context: ContextTypes.DEFAULT_
         xabar += (f"{i}. 👤 *{ism}* ({lavozim})\n"
                   f"   📍 Keldi: {keldi or '—'}\n"
                   f"   📍 Ketdi: {ketdi or '—'}\n"
-                  f"   ⏱ Ish: {s}s {d}d | ⚠️ {kech}\n\n")
+                  f"   ⏱ Ish: {s} soat {d} daqiqa | ⚠️ {kech}\n\n")
 
     await update.message.reply_text(xabar, parse_mode='Markdown')
 
@@ -1849,7 +1849,7 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_ism = update.effective_user.first_name or 'Xodim'
     s = int(ish_soat); d = int((ish_soat - s) * 60)
-    tafsilot = f"Ketdi: {ketdi_vaqt} | Ish vaqti: {s}s {d}d | Masofa: {m}m"
+    tafsilot = f"Ketdi: {ketdi_vaqt} | Ish vaqti: {s} soat {d} daqiqa | Masofa: {m}m"
     audit_log_qoshish(komp_id, 'KETDI', tafsilot, xodim_id, rasm_id if is_photo else None,
                      rasm_id if not is_photo else None, user_id, user_ism)
 
@@ -1999,7 +1999,7 @@ async def sa_hisobot_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kech = kechikish_format(int(kechikish or 0))
             xabar += (f"👤 {ism} ({lavozim})\n"
                       f"   📍 {keldi or '—'} → {ketdi or '—'} | "
-                      f"⏱ {s}s {d}d | ⚠️ {kech}\n")
+                      f"⏱ {s} soat {d} daqiqa | ⚠️ {kech}\n")
 
         await update.message.reply_text(xabar, parse_mode='Markdown')
 
