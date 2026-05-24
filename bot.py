@@ -117,6 +117,12 @@ def restart_kb():
         ["☰ Menu"]
     ], resize_keyboard=True)
 
+def menu_restart_kb():
+    """Single restart button for menu"""
+    return ReplyKeyboardMarkup([
+        ["🔄 Restart / Boshla"]
+    ], resize_keyboard=True)
+
 def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
     """WiFi prompt with Telegram WebApp"""
     base_url = os.environ.get('APP_URL', 'https://gigandtimebot-production.up.railway.app')
@@ -420,8 +426,11 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_SOZ_MENU
 
     elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
-        await update.message.reply_text("👑 Super Admin paneliga xush kelibsiz!", reply_markup=sa_menu_kb())
+        await update.message.reply_text("Boshidan boshlash uchun:", reply_markup=menu_restart_kb())
         return SA_MENU
+
+    elif matn == "🔄 Restart / Boshla":
+        return await start(update, context)
 
     return SA_MENU
 
