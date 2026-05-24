@@ -86,6 +86,7 @@ def sa_menu_kb():
         ["🏢 Kompaniyalar", "👑 Super Adminlar"],
         ["📊 Umumiy hisobot", "📋 Audit Log"],
         ["📸 Barcha rasmlar", "🔐 Sozlamalar"],
+        ["🏠 Bosh menu"]
     ], resize_keyboard=True)
 
 def adm_menu_kb():
@@ -123,48 +124,88 @@ def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
 # ==================== START ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Boshidan - Professional main menu for all user types"""
     user_id = update.effective_user.id
     context.user_data.clear()
 
-    if super_admin_id_tekshir(user_id):
-        await update.message.reply_text("👑 Super Admin paneliga xush kelibsiz!", reply_markup=sa_menu_kb())
-        return SA_MENU
+    try:
+        # Check if super admin
+        if super_admin_id_tekshir(user_id):
+            await update.message.reply_text(
+                "👑 *Super Admin Paneli*\n\n"
+                "Boshidan - Asosiy menyuga xush kelibsiz!",
+                parse_mode='Markdown',
+                reply_markup=sa_menu_kb())
+            return SA_MENU
 
-    conn = connect(); cur = conn.cursor()
-    cur.execute("SELECT id,nomi,holat FROM kompaniyalar WHERE admin_id=%s", (user_id,))
-    adm_komp = cur.fetchone(); cur.close(); conn.close()
+        # Check if admin
+        conn = connect(); cur = conn.cursor()
+        cur.execute("SELECT id,nomi,holat FROM kompaniyalar WHERE admin_id=%s", (user_id,))
+        adm_komp = cur.fetchone(); cur.close(); conn.close()
 
-    if adm_komp:
-        if adm_komp[2] != 'faol':
-            await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
-            return ConversationHandler.END
-        context.user_data['komp_id'] = adm_komp[0]
-        await update.message.reply_text("🏢 Admin paneliga xush kelibsiz!", reply_markup=adm_menu_kb())
-        return ADM_MENU
+        if adm_komp:
+            if adm_komp[2] != 'faol':
+                await update.message.reply_text(
+                    "⛔️ *Kompaniyangiz faol emas*\n\n"
+                    "Tizim bilan bog'lanish uchun murojaat qiling.",
+                    parse_mode='Markdown')
+                return ConversationHandler.END
+            context.user_data['komp_id'] = adm_komp[0]
+            await update.message.reply_text(
+                f"🏢 *Admin Paneli*\n\n"
+                f"Kompaniya: {adm_komp[1]}\n"
+                f"Boshidan - Asosiy menyuga xush kelibsiz!",
+                parse_mode='Markdown',
+                reply_markup=adm_menu_kb())
+            return ADM_MENU
 
-    xodim = telegram_id_orqali_xodim(user_id)
-    if xodim:
-        komp = kompaniya_olish(xodim[3])
-        if not komp or komp[4] != 'faol':
-            await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
-            return ConversationHandler.END
-        context.user_data.update({'xodim_id': xodim[0], 'ism': xodim[1], 'rol': xodim[2], 'komp_id': xodim[3]})
-        if xodim[2] == 'hr':
-            await update.message.reply_text(f"👔 HR paneliga xush kelibsiz, {xodim[1]}!", reply_markup=hr_menu_kb())
-            return HR_MENU
-        else:
-            await update.message.reply_text(f"👋 Xush kelibsiz, {xodim[1]}!", reply_markup=xod_menu_kb())
-            return XOD_MENU
+        # Check if xodim/HR
+        xodim = telegram_id_orqali_xodim(user_id)
+        if xodim:
+            komp = kompaniya_olish(xodim[3])
+            if not komp or komp[4] != 'faol':
+                await update.message.reply_text(
+                    "⛔️ *Kompaniyangiz faol emas*\n\n"
+                    "Tizim bilan bog'lanish uchun murojaat qiling.",
+                    parse_mode='Markdown')
+                return ConversationHandler.END
+            context.user_data.update({'xodim_id': xodim[0], 'ism': xodim[1], 'rol': xodim[2], 'komp_id': xodim[3]})
+            if xodim[2] == 'hr':
+                await update.message.reply_text(
+                    f"👔 *HR Paneli*\n\n"
+                    f"Xush kelibsiz, {xodim[1]}!\n"
+                    f"Boshidan - Asosiy menyuga xush kelibsiz!",
+                    parse_mode='Markdown',
+                    reply_markup=hr_menu_kb())
+                return HR_MENU
+            else:
+                await update.message.reply_text(
+                    f"👋 *Xodim Paneli*\n\n"
+                    f"Xush kelibsiz, {xodim[1]}!\n"
+                    f"Boshidan - Asosiy menyuga xush kelibsiz!",
+                    parse_mode='Markdown',
+                    reply_markup=xod_menu_kb())
+                return XOD_MENU
 
-    murojaat = get_murojaat_raqam()
-    btn = [[KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)]]
-    await update.message.reply_text(
-        f"👋 Xush kelibsiz!\n\n"
-        f"Telefon raqamingizni yuboring.\n\n"
-        f"❓ Agar tizimda yo'q bo'lsangiz:\n"
-        f"📞 Murojaat: +998{murojaat}",
-        reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
-    return TELEFON
+        # New user - request phone
+        murojaat = get_murojaat_raqam()
+        btn = [[KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)]]
+        await update.message.reply_text(
+            f"👋 *Xush Kelibsiz!*\n\n"
+            f"Tizimga kirish uchun telefon raqamingizni yuboring.\n\n"
+            f"❓ *Agar tizimda yo'q bo'lsangiz:*\n"
+            f"📞 Murojaat: +998{murojaat}",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
+        return TELEFON
+
+    except Exception as e:
+        logger.error(f"Start handler error: {e}")
+        await update.message.reply_text(
+            "❌ *Xatolik yuz berdi*\n\n"
+            "Iltimos, keyinroq qayta urinib ko'ring yoki murojaat qiling.",
+            parse_mode='Markdown')
+        return ConversationHandler.END
 
 async def boshlash_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """▶️ tugmasi uchun"""
@@ -217,7 +258,12 @@ async def kod_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Noto'g'ri kod!")
             return KOD
         super_admin_telegram_saqlash(telefon, user_id)
-        await update.message.reply_text("✅ Xush kelibsiz, Super Admin!", reply_markup=sa_menu_kb())
+        await update.message.reply_text(
+            "👑 *Super Admin Paneli*\n\n"
+            "✅ Kodingiz tasdiqlandi.\n"
+            "Boshidan - Asosiy menyuga xush kelibsiz!",
+            parse_mode='Markdown',
+            reply_markup=sa_menu_kb())
         return SA_MENU
 
     elif tip == 'admin':
@@ -225,7 +271,13 @@ async def kod_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Noto'g'ri kod!")
             return KOD
         admin_id_saqlash(context.user_data['komp_id'], user_id)
-        await update.message.reply_text("✅ Admin sifatida kirdingiz!", reply_markup=adm_menu_kb())
+        komp_nomi = context.user_data.get('komp_nomi', 'Kompaniya')
+        await update.message.reply_text(
+            f"🏢 *Admin Paneli*\n\n"
+            f"✅ Kodingiz tasdiqlandi.\n"
+            f"Boshidan - Asosiy menyuga xush kelibsiz!",
+            parse_mode='Markdown',
+            reply_markup=adm_menu_kb())
         return ADM_MENU
 
     else:
@@ -236,11 +288,24 @@ async def kod_tekshir(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return KOD
         xodim_telegram_saqlash(xodim_id, user_id)
         context.user_data['komp_id'] = xodim[9]
+        ism = context.user_data.get('ism', 'Xodim')
         if tip == 'hr':
-            await update.message.reply_text("✅ HR sifatida kirdingiz!", reply_markup=hr_menu_kb())
+            await update.message.reply_text(
+                f"👔 *HR Paneli*\n\n"
+                f"✅ Kodingiz tasdiqlandi.\n"
+                f"Xush kelibsiz, {ism}!\n"
+                f"Boshidan - Asosiy menyuga xush kelibsiz!",
+                parse_mode='Markdown',
+                reply_markup=hr_menu_kb())
             return HR_MENU
         else:
-            await update.message.reply_text(f"✅ Xush kelibsiz, {context.user_data['ism']}!", reply_markup=xod_menu_kb())
+            await update.message.reply_text(
+                f"👋 *Xodim Paneli*\n\n"
+                f"✅ Kodingiz tasdiqlandi.\n"
+                f"Xush kelibsiz, {ism}!\n"
+                f"Boshidan - Asosiy menyuga xush kelibsiz!",
+                parse_mode='Markdown',
+                reply_markup=xod_menu_kb())
             return XOD_MENU
 
 # ==================== SUPER ADMIN ====================
@@ -346,6 +411,10 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_SOZ_MENU
+
+    elif matn == "🏠 Bosh menu":
+        await update.message.reply_text("👑 Super Admin paneliga xush kelibsiz!", reply_markup=sa_menu_kb())
+        return SA_MENU
 
     return SA_MENU
 
