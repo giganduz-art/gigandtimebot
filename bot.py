@@ -715,8 +715,25 @@ async def sa_komp_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TY
     matn = update.message.text
     komp_id = context.user_data.get('sa_komp_id')
     if matn == "🔙 Orqaga":
-        await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
-        return SA_MENU
+        # Go back to company menu
+        komp = kompaniya_olish(komp_id)
+        emoji = "✅" if komp[4] == 'faol' else "🔴"
+        xabar = (f"🏢 *{komp[1]}*\n━━━━━━━━━━━━━━━\n"
+                f"📞 Admin tel: {komp[2] or '—'}\n"
+                f"🔑 Admin kodi: `{komp[13] or '—'}`\n"
+                f"📍 GPS: {komp[5]}, {komp[6]}\n"
+                f"📏 Radius: {komp[7]}m\n"
+                f"Holat: {emoji} {komp[4]}\n"
+                f"━━━━━━━━━━━━━━━")
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["✏️ Tahrirlash", "⚙️ Funksiyalar"],
+                ["✅ Faollashtirish", "🔴 To'xtatish"],
+                ["👥 Xodimlar", "📅 Davomat"],
+                ["📊 Hisobot", "🗑 O'chirish"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return SA_KOMP_TANLASH
     if matn == "➕ Xodim qo'shish":
         await update.message.reply_text("👤 Xodim ismini kiriting:", reply_markup=ReplyKeyboardRemove())
         return ADM_XODIM_ISM
@@ -744,6 +761,12 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif matn == "🗑 O'chirish":
         komp_id = context.user_data.get('sa_komp_id')
         x = xodim_olish(xodim_id)
+
+        # Security check: xodim kompaniyaga tegishli ekanligini tekshir
+        if not x or x[9] != komp_id:
+            await update.message.reply_text("❌ Bu xodim bu kompaniyaga tegishli emas!", reply_markup=sa_menu_kb())
+            return SA_MENU
+
         xodim_ism = x[1] if x else 'Unknown'
         xodim_ochirish(xodim_id)
 
@@ -753,8 +776,21 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         tafsilot = f"Xodim o'chirildi: {xodim_ism}"
         audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
 
-        await update.message.reply_text("🗑 Xodim o'chirildi!", reply_markup=sa_menu_kb())
-        return SA_MENU
+        # Show xodim list again
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 Boshqa xodim yo'q.", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_KOMP_XODIM_TANLASH
+
+        xabar = "🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n\n"
+        tugmalar = []
+        for x in xodimlar:
+            xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
+            tugmalar.append([f"{x[0]}. {x[1]}"])
+        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return SA_KOMP_XODIM_TANLASH
     elif matn == "✏️ Tahrirlash":
         await update.message.reply_text("Nimani tahrirlash?",
             reply_markup=ReplyKeyboardMarkup([
