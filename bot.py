@@ -1721,15 +1721,7 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     live_period = getattr(update.message.location, 'live_period', None)
     komp = kompaniya_olish(komp_id)
 
-    # FIX 1: Live GPS yoqilgan bo'lsa, oddiy lokatsiyani qabul qilma
-    if komp and komp[14] and not live_period:
-        btn = [[KeyboardButton("📍 Lokatsiya yuborish", request_location=True)]]
-        await update.message.reply_text(
-            "❌ Bu kompaniya uchun 📡 *Live lokatsiya* kerak!\n\n"
-            "📌 Lokatsiya yuborishda *'Real vaqt lokatsiyasi'* (8 soat) tugmasini tanlang!",
-            parse_mode='Markdown',
-            reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
-        return XOD_KELDI_GPS
+    # Accept BOTH live location and regular location
 
     komp_lat, komp_lon, radius = get_gps(komp_id)
     m = masofa_hisob(lat, lon, komp_lat, komp_lon)
@@ -2417,16 +2409,16 @@ def main():
     app.add_handler(CallbackQueryHandler(sorov_callback, pattern=r'^sorov_'))
     app.add_handler(CallbackQueryHandler(wifi_callback, pattern=r'^wifi_'))
     app.add_handler(CallbackQueryHandler(gps_callback, pattern=r'^gps_'))
-    # Live lokatsiya disabled - use regular GPS locations only
-    # app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
+    # Live lokatsiya yangilanishi (edited_message) - live location updates
+    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, live_location_update))
     app.add_error_handler(xato)
 
     # Job Queue — schedulerlar
     jq = app.job_queue
     # Har 30 daqiqada joylashuv tekshiruvi
     jq.run_repeating(tekshiruv_job, interval=1800, first=60)
-    # Live location timeout disabled - using regular GPS only
-    # jq.run_repeating(live_location_timeout_job, interval=600, first=60)
+    # 8 soat live location timeout
+    jq.run_repeating(live_location_timeout_job, interval=600, first=60)
     # Har daqiqa eslatma (ish boshlanishi va tug'ilgan kun)
     jq.run_repeating(eslatma_job, interval=60, first=30)
     # Juma kuni soat 18:00 da haftalik hisobot
