@@ -1798,6 +1798,16 @@ async def hr_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xodim = xodim_olish(xodim_id)
     xodim_ism = xodim[1] if xodim else "Noma'lum"
 
+    # Validate date format
+    if not (len(sana_matn) == 7 or len(sana_matn) == 10):  # YYYY-MM or YYYY-MM-DD
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\n"
+            f"Iltimos, format shunga mos kelsin:\n"
+            f"• Oy uchun: 2026-05\n"
+            f"• Kun uchun: 2026-05-24",
+            reply_markup=hr_menu_kb())
+        return HR_MENU
+
     try:
         # xodim_davomati uses LIKE filter, so both "2026-05" and "2026-05-24" will work
         davomatlar = xodim_davomati(xodim_id, sana_matn)
