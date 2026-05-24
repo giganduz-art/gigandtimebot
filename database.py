@@ -48,12 +48,17 @@ def create_tables():
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS live_gps_tekshiruv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_aktiv BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_ssid TEXT DEFAULT ''")
-    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_mac TEXT DEFAULT ''")
-    # Migration: rename wifi_ip to wifi_mac if exists
+
+    # Migration: rename wifi_ip to wifi_mac if wifi_ip exists but wifi_mac doesn't
     try:
-        cur.execute("ALTER TABLE kompaniyalar RENAME COLUMN wifi_ip TO wifi_mac")
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='kompaniyalar' AND column_name='wifi_ip'")
+        if cur.fetchone():
+            cur.execute("ALTER TABLE kompaniyalar RENAME COLUMN wifi_ip TO wifi_mac")
     except:
         pass
+
+    # If migration didn't work, just add wifi_mac column
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_mac TEXT DEFAULT ''")
 
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
         id SERIAL PRIMARY KEY, ism TEXT NOT NULL, telefon TEXT, kod TEXT,
