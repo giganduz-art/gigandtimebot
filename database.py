@@ -811,11 +811,9 @@ def generate_keldi_motivation(xodim, kechikish, streak):
         if streak >= 5: msg += f"🔥 {streak} kunlik streak! Zo'r!"
         elif streak >= 3: msg += f"💪 {streak} kunlik davomiylik! Yaxshi!"
         return msg
-    elif kechikish <= 15:
-        return f"⚠️ *{ism}!* Bugun {kechikish} daqiqaga kechiktingiz.\nKeying safar vaqtida keling!"
     else:
         kech_fmt = kechikish_format(kechikish)
-        return f"🚨 *DIQQAT!* {ism}, siz {kech_fmt}ga kechiktingiz!\nBu intizom buzilishi!"
+        return f"⚠️ *{ism}!* Bugun {kech_fmt}ga kechiktingiz.\nKeying safar vaqtida keling!"
 
 def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
     """Ketdi uchun motivatsiya matni"""
