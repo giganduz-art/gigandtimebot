@@ -579,9 +579,12 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return SA_KOMP_TANLASH
         xabar = "👥 *Xodimlar:*\n\n"
         tugmalar = []
-        for x in xodimlar:
-            xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
-            tugmalar.append([f"{x[0]}. {x[1]}"])
+        xodim_id_map = {}  # Display nomeri → Actual ID mapping
+        for i, x in enumerate(xodimlar, 1):
+            xabar += f"• `{i}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]  # Map display number to actual ID
+        context.user_data['xodim_id_map'] = xodim_id_map
         tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
         await update.message.reply_text(xabar, parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
@@ -739,7 +742,10 @@ async def sa_komp_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("👤 Xodim ismini kiriting:", reply_markup=ReplyKeyboardRemove())
         return ADM_XODIM_ISM
     try:
-        xodim_id = int(matn.split(".")[0].strip())
+        # Get actual xodim_id from mapping (display number → actual ID)
+        display_num = matn.split(".")[0].strip()
+        xodim_id_map = context.user_data.get('xodim_id_map', {})
+        xodim_id = xodim_id_map.get(display_num, int(display_num))  # Fallback to direct parse if no mapping
         context.user_data['tahrir_xodim_id'] = xodim_id
         x = xodim_olish(xodim_id)
         await update.message.reply_text(
@@ -820,9 +826,12 @@ async def sa_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         xabar = "🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n\n"
         tugmalar = []
-        for x in xodimlar:
-            xabar += f"• `{x[0]}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
-            tugmalar.append([f"{x[0]}. {x[1]}"])
+        xodim_id_map = {}  # Display nomeri → Actual ID mapping
+        for i, x in enumerate(xodimlar, 1):
+            xabar += f"• `{i}` *{x[1]}* — {x[2]} | 🎭{x[7]}\n"
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]  # Map display number to actual ID
+        context.user_data['xodim_id_map'] = xodim_id_map
         tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
         await update.message.reply_text(xabar, parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
@@ -1153,8 +1162,16 @@ async def adm_xodim_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Xodim yo'q!")
             return ADM_XODIM_LIST
         context.user_data['xodim_amal'] = 'tahrir' if matn == "✏️ Tahrirlash" else 'ochir'
-        tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
-        tugmalar.append(["🔙 Orqaga"])
+
+        # Sequential numbering with ID mapping
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]  # Map display number to actual ID
+        context.user_data['xodim_id_map'] = xodim_id_map
+
+        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
         await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return ADM_XODIM_TANLASH
     return ADM_XODIM_LIST
@@ -1245,8 +1262,23 @@ async def adm_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYP
         tafsilot = f"Xodim o'chirildi: {xodim_ism}"
         audit_log_qoshish(komp_id, 'XODIM_O\'CHIRISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
 
-        await update.message.reply_text("🗑 Xodim o'chirildi! ✅", reply_markup=adm_menu_kb())
-        return ADM_MENU
+        # Show updated xodim list with sequential numbering
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 Boshqa xodim yo'q.", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XODIM_TANLASH
+
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+        await update.message.reply_text("🗑 Xodim o'chirildi! ✅\n\n👥 *Xodimlar:*\n" +
+            "\n".join([f"• `{i}` *{x[1]}*" for i, x in enumerate(xodimlar, 1)]),
+            parse_mode='Markdown', reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return ADM_XODIM_TANLASH
     except Exception as e:
         logger.error(f"Admin xodim o'chirish xatosi: {e}")
         await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=adm_menu_kb())
@@ -1257,8 +1289,14 @@ async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
+    if matn == "➕ Xodim qo'shish":
+        await update.message.reply_text("👤 Xodim ismini kiriting:", reply_markup=ReplyKeyboardRemove())
+        return ADM_XODIM_ISM
     try:
-        xodim_id = int(matn.split(".")[0].strip())
+        # Get actual xodim_id from mapping (display number → actual ID)
+        display_num = matn.split(".")[0].strip()
+        xodim_id_map = context.user_data.get('xodim_id_map', {})
+        xodim_id = xodim_id_map.get(display_num, int(display_num))  # Fallback to direct parse if no mapping
         context.user_data['tahrir_xodim_id'] = xodim_id
         amal = context.user_data.get('xodim_amal')
         if amal == 'ochir':
@@ -1354,7 +1392,15 @@ async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
             await update.message.reply_text("❌ Xodim yo'q!"); return ADM_DAV_MENU
-        tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
+
+        # Sequential numbering with ID mapping
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+
         tugmalar.append(["🔙 Orqaga"])
         await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         context.user_data['dav_amal'] = 'kiritish'; return ADM_DAV_XODIM
@@ -1362,7 +1408,15 @@ async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
             await update.message.reply_text("❌ Xodim yo'q!"); return ADM_DAV_MENU
-        tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
+
+        # Sequential numbering with ID mapping
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+
         tugmalar.append(["🔙 Orqaga"])
         await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         context.user_data['dav_amal'] = 'tahrirlash'; return ADM_DAV_XODIM
@@ -1376,7 +1430,10 @@ async def adm_dav_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], resize_keyboard=True))
         return ADM_DAV_MENU
     try:
-        xodim_id = int(matn.split(".")[0].strip())
+        # Get actual xodim_id from mapping (display number → actual ID)
+        display_num = matn.split(".")[0].strip()
+        xodim_id_map = context.user_data.get('xodim_id_map', {})
+        xodim_id = xodim_id_map.get(display_num, int(display_num))  # Fallback to direct parse if no mapping
         context.user_data['dav_xodim_id'] = xodim_id
         if context.user_data.get('dav_amal') == 'tahrirlash':
             davomatlar = xodim_davomati(xodim_id)
@@ -1621,7 +1678,15 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
             await update.message.reply_text("❌ Xodim yo'q!"); return HR_MENU
-        tugmalar = [[f"{x[0]}. {x[1]}"] for x in xodimlar]
+
+        # Sequential numbering with ID mapping
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+
         tugmalar.append(["🔙 Orqaga"])
         await update.message.reply_text("Xodim tanlang:", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return HR_MAN_XODIM
@@ -1651,7 +1716,10 @@ async def hr_man_xodim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👔 HR menu:", reply_markup=hr_menu_kb())
         return HR_MENU
     try:
-        xodim_id = int(matn.split(".")[0].strip())
+        # Get actual xodim_id from mapping (display number → actual ID)
+        display_num = matn.split(".")[0].strip()
+        xodim_id_map = context.user_data.get('xodim_id_map', {})
+        xodim_id = xodim_id_map.get(display_num, int(display_num))  # Fallback to direct parse if no mapping
         context.user_data['dav_xodim_id'] = xodim_id
         await update.message.reply_text("📅 Sana (YYYY-MM-DD):", reply_markup=ReplyKeyboardRemove())
         return HR_MAN_SANA
