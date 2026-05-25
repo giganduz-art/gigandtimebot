@@ -582,18 +582,25 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif matn == "👥 Xodimlar":
         xodimlar = kompaniya_xodimlari(komp_id)
-        if not xodimlar:
-            await update.message.reply_text("👥 Xodimlar yo'q.")
-            return SA_KOMP_TANLASH
-        xabar = "👥 *Xodimlar:*\n\n"
-        tugmalar = []
         xodim_id_map = {}  # Display nomeri → Actual ID mapping
-        for i, x in enumerate(xodimlar, 1):
-            xabar += f"• `{i}` *{x[1]}* (ID:{x[0]}) — {x[2]} | 🎭{x[7]}\n"
-            tugmalar.append([f"{i}. {x[1]}"])
-            xodim_id_map[str(i)] = x[0]  # Map display number to actual ID
+
+        if not xodimlar:
+            xabar = "👥 *Xodimlar yo'q.*\n\n➕ Yangi xodim qo'shishni boshlang!"
+        else:
+            xabar = "👥 *Xodimlar:*\n\n"
+            for i, x in enumerate(xodimlar, 1):
+                xabar += f"• `{i}` *{x[1]}* (ID:{x[0]}) — {x[2]} | 🎭{x[7]}\n"
+                xodim_id_map[str(i)] = x[0]  # Map display number to actual ID
+
         context.user_data['xodim_id_map'] = xodim_id_map
-        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+        tugmalar = [["➕ Xodim qo'shish", "🔙 Orqaga"]]
+
+        if xodimlar:
+            tugmalar = []
+            for i, x in enumerate(xodimlar, 1):
+                tugmalar.append([f"{i}. {x[1]}"])
+            tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+
         await update.message.reply_text(xabar, parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return SA_KOMP_XODIM_TANLASH
