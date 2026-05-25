@@ -91,7 +91,7 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
 
 def sa_menu_kb():
     return ReplyKeyboardMarkup([
-        ["🏢 Kompaniyalar", "👑 Super Adminlar"],
+        ["🏢 Bizneslar", "👑 Super Adminlar"],
         ["📊 Umumiy hisobot", "📋 Audit Log"],
         ["📸 Barcha rasmlar", "🔐 Sozlamalar"],
         ["☰ Menu"]
@@ -372,7 +372,7 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     user_id = update.effective_user.id
 
-    if matn == "🏢 Kompaniyalar":
+    if matn == "🏢 Bizneslar":
         return await sa_kompaniyalar_korsatish(update, context)
 
     elif matn == "👑 Super Adminlar":
@@ -488,7 +488,7 @@ async def sa_kompaniyalar_korsatish(update, context):
         await update.message.reply_text("📋 Hozircha kompaniya yo'q.",
             reply_markup=ReplyKeyboardMarkup([["➕ Yangi kompaniya", "🔙 Orqaga"]], resize_keyboard=True))
     else:
-        xabar = "🏢 *Kompaniyalar:*\n\n"
+        xabar = "🏢 *Bizneslar:*\n\n"
         for k in kompaniyalar:
             emoji = "✅" if k[3] == 'faol' else "🔴"
             xabar += f"{emoji} `{k[0]}`. *{k[1]}*\n"
