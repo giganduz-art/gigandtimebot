@@ -896,7 +896,7 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
                            LIMIT 1''', (xodim_id, sana_str))
             dav = cur.fetchone()
 
-            # Kirituvchi ismini olish
+            # Kirituvchi ismini olish - ROLE + ISM formatida
             yaratgan = ""
             if dav:
                 keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id = dav
@@ -907,13 +907,23 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
                     cur2 = connect().cursor()
                     cur2.execute("SELECT ism FROM xodimlar WHERE id=%s", (xodim_id,))
                     result = cur2.fetchone()
-                    yaratgan = result[0] if result else "XODIM"
+                    xodim_ism_full = result[0] if result else "XODIM"
+                    yaratgan = f"xodim + {xodim_ism_full}"
                     cur2.close()
                 elif kiritdi in ['admin', 'super_admin', 'hr']:
                     cur2 = connect().cursor()
+                    # Super adminlar/Admin/HR ismini olish
                     cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
                     result = cur2.fetchone()
-                    yaratgan = result[0] if result else kiritdi.upper()
+                    if result:
+                        user_ism = result[0]
+                        yaratgan = f"{kiritdi} + {user_ism}"
+                    else:
+                        # Agar super_adminlarda bo'lmasa, xodim jadvalida admin sifatida bo'lish mumkin
+                        cur2.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (kiritdi_id,))
+                        result2 = cur2.fetchone()
+                        user_ism = result2[0] if result2 else kiritdi.upper()
+                        yaratgan = f"{kiritdi} + {user_ism}"
                     cur2.close()
             else:
                 # Ma'lumot yo'q - bo'sh quyosh
