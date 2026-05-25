@@ -1545,7 +1545,7 @@ async def adm_xodim_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             xabar = "👥 *Xodimlar ro'yxati:*\n\n"
             for x in xodimlar:
-                xabar += f"• *{x[1]}* — {x[2]}\n  📞 {x[3]} | 💰 {x[4]:,.0f} | 🎭 {x[7]}\n  ⏰ {x[5]}-{x[6]} | 🔐 `{x[8]}`\n\n"
+                xabar += f"• `ID:{x[0]}` *{x[1]}* — {x[2]}\n  📞 {x[3]} | 💰 {x[4]:,.0f} | 🎭 {x[7]}\n  ⏰ {x[5]}-{x[6]} | 🔐 `{x[8]}`\n\n"
             await update.message.reply_text(xabar, parse_mode='Markdown')
         return ADM_XODIM_LIST
     elif matn == "➕ Qo'shish":
