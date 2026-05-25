@@ -925,6 +925,43 @@ async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYP
 async def sa_adm_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     user_id = update.effective_user.id
+
+    # KOD CHECK AVVAL! (Bu boshqa hammasidan OLDIN tekshirilishi kerak)
+    if context.user_data.get('sa_kod_amal') == 'qosh':
+        # Super Admin yaratish uchun kod tasdiqlash
+        from database import super_admin_kod_tekshir
+        telefon = context.user_data.get('yangi_sa_tel')
+        ism = context.user_data.get('yangi_sa_ism')
+        if super_admin_kod_tekshir(matn.strip()):
+            if super_admin_qoshish(telefon, ism):
+                await update.message.reply_text(f"✅ Super Admin qo'shildi!\n👤 {ism}\n📱 {telefon}", reply_markup=sa_menu_kb())
+                context.user_data.pop('sa_kod_amal', None)
+                context.user_data.pop('yangi_sa_tel', None)
+                context.user_data.pop('yangi_sa_ism', None)
+                return SA_MENU
+            else:
+                await update.message.reply_text("⚠️ Bu telefon allaqachon Super Admin!", reply_markup=sa_menu_kb())
+                context.user_data.pop('sa_kod_amal', None)
+                return SA_MENU
+        else:
+            await update.message.reply_text("❌ Kod noto'g'ri!", reply_markup=ReplyKeyboardRemove())
+            return SA_ADM_LIST
+    elif context.user_data.get('sa_kod_amal') == 'ochir':
+        # Super Admin o'chirish uchun kod tasdiqlash
+        from database import super_admin_kod_tekshir
+        if super_admin_kod_tekshir(matn.strip()):
+            sa_id = context.user_data.get('ochir_sa_id')
+            super_admin_ochirish(sa_id)
+            await update.message.reply_text("✅ Admin o'chirildi!", reply_markup=sa_menu_kb())
+            context.user_data.pop('sa_amal', None)
+            context.user_data.pop('sa_kod_amal', None)
+            context.user_data.pop('ochir_sa_id', None)
+            return SA_MENU
+        else:
+            await update.message.reply_text("❌ Kod noto'g'ri!", reply_markup=ReplyKeyboardRemove())
+            return SA_ADM_LIST
+
+    # Qolgan button presslar
     if matn == "🔙 Orqaga":
         await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
         return SA_MENU
@@ -961,39 +998,6 @@ async def sa_adm_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['sa_kod_amal'] = 'ochir'
             return SA_ADM_LIST
         except:
-            return SA_ADM_LIST
-    elif context.user_data.get('sa_kod_amal') == 'qosh':
-        # Super Admin yaratish uchun kod tasdiqlash
-        from database import super_admin_kod_tekshir
-        telefon = context.user_data.get('yangi_sa_tel')
-        ism = context.user_data.get('yangi_sa_ism')
-        if super_admin_kod_tekshir(matn.strip()):
-            if super_admin_qoshish(telefon, ism):
-                await update.message.reply_text(f"✅ Super Admin qo'shildi!\n👤 {ism}\n📱 {telefon}", reply_markup=sa_menu_kb())
-                context.user_data.pop('sa_kod_amal', None)
-                context.user_data.pop('yangi_sa_tel', None)
-                context.user_data.pop('yangi_sa_ism', None)
-                return SA_MENU
-            else:
-                await update.message.reply_text("⚠️ Bu telefon allaqachon Super Admin!", reply_markup=sa_menu_kb())
-                context.user_data.pop('sa_kod_amal', None)
-                return SA_MENU
-        else:
-            await update.message.reply_text("❌ Kod noto'g'ri!", reply_markup=ReplyKeyboardRemove())
-            return SA_ADM_LIST
-    elif context.user_data.get('sa_kod_amal') == 'ochir':
-        # Super Admin o'chirish uchun kod tasdiqlash
-        from database import super_admin_kod_tekshir
-        if super_admin_kod_tekshir(matn.strip()):
-            sa_id = context.user_data.get('ochir_sa_id')
-            super_admin_ochirish(sa_id)
-            await update.message.reply_text("✅ Admin o'chirildi!", reply_markup=sa_menu_kb())
-            context.user_data.pop('sa_amal', None)
-            context.user_data.pop('sa_kod_amal', None)
-            context.user_data.pop('ochir_sa_id', None)
-            return SA_MENU
-        else:
-            await update.message.reply_text("❌ Kod noto'g'ri!", reply_markup=ReplyKeyboardRemove())
             return SA_ADM_LIST
     elif context.user_data.get('sa_amal') == 'mening':
         if matn == "📱 Telefonni o'zgartirish":
