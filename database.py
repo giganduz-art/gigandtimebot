@@ -824,20 +824,21 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
     ws['A1'] = title
     ws['A2'] = f"SANA ORALIG'I: {sana_from} dan {sana_to} gacha"
 
-    # CAPITAL LETTER headers
+    # CAPITAL LETTER headers - yangi YARATGAN ustuni qo'shildi
     headers = [
         "TASKILOTI", "SANA", "XODIM ISM", "LAVOZIMI",
-        "KELDI", "KETDI", "ISH SOAT", "KECHIKISH", "HOLAT", "IZOH"
+        "KELDI", "KETDI", "ISH SOAT", "KECHIKISH", "HOLAT", "IZOH", "YARATGAN"
     ]
 
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col_idx, value=header)
         cell.font = Font(bold=True)
 
-    # Davomat ma'lumotlarini olish
+    # Davomat ma'lumotlarini olish - kiritdi va kiritdi_id qo'shildi
     if super_admin:
         cur.execute('''SELECT k.nomi, d.sana, x.ism, x.lavozim,
-                              d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
+                              d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh,
+                              d.kiritdi, d.kiritdi_id
                        FROM davomat d
                        JOIN xodimlar x ON d.xodim_id=x.id
                        JOIN kompaniyalar k ON d.kompaniya_id=k.id
@@ -846,7 +847,8 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
                     (sana_from, sana_to))
     else:
         cur.execute('''SELECT k.nomi, d.sana, x.ism, x.lavozim,
-                              d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
+                              d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh,
+                              d.kiritdi, d.kiritdi_id
                        FROM davomat d
                        JOIN xodimlar x ON d.xodim_id=x.id
                        JOIN kompaniyalar k ON d.kompaniya_id=k.id
@@ -858,7 +860,26 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
 
     # Data yozish
     row = 5
-    for komp_nomi, sana, xodim_ism, lavozim, keldi, ketdi, ish_soat, kechikish, holat, izoh in davomatlar:
+    for komp_nomi, sana, xodim_ism, lavozim, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id in davomatlar:
+        # Kirituvchi ismini olish
+        yaratgan = "BOT"
+        if kiritdi and kiritdi != 'bot':
+            # User ism/telegramni olish
+            if kiritdi == 'xodim':
+                cur2 = connect().cursor()
+                cur2.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (kiritdi_id,))
+                result = cur2.fetchone()
+                yaratgan = result[0] if result else "XODIM"
+                cur2.close()
+            elif kiritdi in ['admin', 'super_admin', 'hr']:
+                cur2 = connect().cursor()
+                # Admin/HR uchun super_adminlar yoki kompaniyalarni tekshir
+                cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
+                result = cur2.fetchone()
+                if result:
+                    yaratgan = result[0]
+                cur2.close()
+
         ws.cell(row=row, column=1, value=komp_nomi)
         ws.cell(row=row, column=2, value=sana)
         ws.cell(row=row, column=3, value=xodim_ism)
@@ -869,6 +890,7 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
         ws.cell(row=row, column=8, value=kechikish_format(kechikish) if kechikish else "—")
         ws.cell(row=row, column=9, value=holat or "—")
         ws.cell(row=row, column=10, value=izoh or "—")
+        ws.cell(row=row, column=11, value=yaratgan)  # YARATGAN ustuni
         row += 1
 
     cur.close(); conn.close()
