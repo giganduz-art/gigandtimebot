@@ -858,12 +858,9 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
 
     davomatlar = cur.fetchall()
 
-    # Har bir kun uchun iteratsiya qilish
     from datetime import date, timedelta
-    current_date = datetime.strptime(sana_from, "%Y-%m-%d").date()
-    end_date = datetime.strptime(sana_to, "%Y-%m-%d").date()
 
-    # Xodimlarni olish
+    # OPTIMIZED: Barcha ma'lumotni BIR MARTA olish
     if super_admin:
         cur.execute('''SELECT DISTINCT xodim_id, x.ism, x.lavozim, k.nomi
                        FROM davomat d
@@ -881,22 +878,67 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
 
     xodimlar_list = cur.fetchall()
 
-    # Data yozish - har bir xodim uchun har bir kun
+    # Barcha davomatlarni BIR MARTA olish (date dict sifatida)
+    if super_admin:
+        cur.execute('''SELECT d.xodim_id, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish,
+                              d.holat, d.izoh, d.kiritdi, d.kiritdi_id
+                       FROM davomat d
+                       WHERE d.sana >= %s AND d.sana <= %s
+                       ORDER BY d.xodim_id, d.sana''', (sana_from, sana_to))
+    else:
+        cur.execute('''SELECT d.xodim_id, d.sana, d.keldi, d.ketdi, d.ish_soat, d.kechikish,
+                              d.holat, d.izoh, d.kiritdi, d.kiritdi_id
+                       FROM davomat d
+                       WHERE d.kompaniya_id=%s AND d.sana >= %s AND d.sana <= %s
+                       ORDER BY d.xodim_id, d.sana''', (komp_id, sana_from, sana_to))
+
+    # Dictionary sifatida saqlash: {xodim_id: {sana: (keldi, ketdi, ...)}
+    davomatlar_dict = {}
+    for xodim_id, sana, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id in cur.fetchall():
+        if xodim_id not in davomatlar_dict:
+            davomatlar_dict[xodim_id] = {}
+        davomatlar_dict[xodim_id][sana] = (keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id)
+
+    # Admin ismlarini cache qilish
+    admin_names_cache = {}
+
+    def get_admin_name(kiritdi_id, kiritdi_type, xodim_id_for_default):
+        """Admin/HR/Super Admin ismini cache bilan olish"""
+        if kiritdi_id in admin_names_cache:
+            return admin_names_cache[kiritdi_id]
+
+        cur2 = connect().cursor()
+        cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
+        result = cur2.fetchone()
+        if result:
+            admin_names_cache[kiritdi_id] = result[0]
+            cur2.close()
+            return result[0]
+
+        # Fallback
+        cur2.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (kiritdi_id,))
+        result = cur2.fetchone()
+        admin_names_cache[kiritdi_id] = result[0] if result else kiritdi_type.upper()
+        cur2.close()
+        return admin_names_cache[kiritdi_id]
+
+    # Data yozish - Python da iteratsiya (database sorash yo'q!)
     row = 5
+    start_date = datetime.strptime(sana_from, "%Y-%m-%d").date()
+    end_date = datetime.strptime(sana_to, "%Y-%m-%d").date()
+
     for xodim_id, xodim_ism, lavozim, komp_nomi in xodimlar_list:
-        current_date = datetime.strptime(sana_from, "%Y-%m-%d").date()
+        current_date = start_date
 
         while current_date <= end_date:
             sana_str = current_date.strftime("%Y-%m-%d")
 
-            # Shu kunning davomatini qidirish
-            cur.execute('''SELECT d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh, d.kiritdi, d.kiritdi_id
-                           FROM davomat d
-                           WHERE d.xodim_id=%s AND d.sana=%s
-                           LIMIT 1''', (xodim_id, sana_str))
-            dav = cur.fetchone()
+            # Dictionary dan qidirish (database sorash yo'q!)
+            dav = None
+            if xodim_id in davomatlar_dict and sana_str in davomatlar_dict[xodim_id]:
+                dav = davomatlar_dict[xodim_id][sana_str]
 
-            # Kirituvchi ismini olish - ROLE + ISM formatida
+            # Kirituvchi ismini olish
             yaratgan = ""
             if dav:
                 keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id = dav
@@ -904,29 +946,12 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
                 if kiritdi == 'bot':
                     yaratgan = "BOT"
                 elif kiritdi == 'xodim':
-                    cur2 = connect().cursor()
-                    cur2.execute("SELECT ism FROM xodimlar WHERE id=%s", (xodim_id,))
-                    result = cur2.fetchone()
-                    xodim_ism_full = result[0] if result else "XODIM"
-                    yaratgan = f"xodim + {xodim_ism_full}"
-                    cur2.close()
+                    yaratgan = f"xodim + {xodim_ism}"
                 elif kiritdi in ['admin', 'super_admin', 'hr']:
-                    cur2 = connect().cursor()
-                    # Super adminlar/Admin/HR ismini olish
-                    cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
-                    result = cur2.fetchone()
-                    if result:
-                        user_ism = result[0]
-                        yaratgan = f"{kiritdi} + {user_ism}"
-                    else:
-                        # Agar super_adminlarda bo'lmasa, xodim jadvalida admin sifatida bo'lish mumkin
-                        cur2.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (kiritdi_id,))
-                        result2 = cur2.fetchone()
-                        user_ism = result2[0] if result2 else kiritdi.upper()
-                        yaratgan = f"{kiritdi} + {user_ism}"
-                    cur2.close()
+                    user_ism = get_admin_name(kiritdi_id, kiritdi, xodim_id)
+                    yaratgan = f"{kiritdi} + {user_ism}"
             else:
-                # Ma'lumot yo'q - bo'sh quyosh
+                # Ma'lumot yo'q
                 keldi = ketdi = ish_soat = kechikish = holat = izoh = None
 
             # Excel da yozish
