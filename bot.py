@@ -61,10 +61,12 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     SA_FUNKSIYA, SA_SOZ_MENU,
     SA_ADM_LIST, SA_ADM_QOSH_TEL, SA_ADM_QOSH_ISM,
     SA_KOMP_XODIM_TANLASH, SA_KOMP_XODIM_AMAL, SA_KOMP_XODIM_TAHRIR,
+    SA_KOMP_XODIM_VIEW_SANA, SA_KOMP_XODIM_STAT_FORMAT, SA_KOMP_XODIM_STAT_SANA_1, SA_KOMP_XODIM_STAT_SANA_2,
     SA_KOMP_DAV_SANA,
     ADM_MENU, ADM_XODIM_LIST, ADM_XODIM_ISM, ADM_XODIM_TEL,
     ADM_XODIM_LAV, ADM_XODIM_OYLIK, ADM_XODIM_BOSH, ADM_XODIM_TUG,
     ADM_XODIM_ROL, ADM_XODIM_TANLASH, ADM_XODIM_TAHRIR, ADM_XODIM_TAHRIR_Q,
+    ADM_KOMP_XODIM_VIEW_SANA, ADM_KOMP_XODIM_STAT_FORMAT, ADM_KOMP_XODIM_STAT_SANA_1, ADM_KOMP_XODIM_STAT_SANA_2,
     ADM_GPS_LOK, ADM_GPS_RADIUS,
     ADM_WIFI_AKTIV, ADM_WIFI_SSID,
     ADM_DAV_MENU, ADM_DAV_XODIM, ADM_DAV_SANA, ADM_DAV_KELDI,
@@ -83,7 +85,7 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     # New hisobot states
     ADM_HISOBOT_FORMAT, ADM_HISOBOT_YIL_OY, ADM_HISOBOT_SANA_1, ADM_HISOBOT_SANA_2,
     SA_HISOBOT_FORMAT, SA_HISOBOT_YIL_OY, SA_HISOBOT_SANA_1, SA_HISOBOT_SANA_2,
-) = range(78)
+) = range(86)
 
 # ==================== MENYULAR ====================
 
@@ -113,7 +115,7 @@ def hr_menu_kb():
 def xod_menu_kb():
     return ReplyKeyboardMarkup([
         ["✅ Keldim", "🚪 Ketdim"],
-        ["📋 Davomatim", "📊 Statistikam"],
+        ["📋 Davomatim"],
         ["📝 Sababli so'rov", "☰ Menu"]
     ], resize_keyboard=True)
 
@@ -139,6 +141,43 @@ def xod_wifi_kb(komp_id=None, amal='keldim', xodim_id=None):
         [InlineKeyboardButton("🏠 Orqaga", callback_data="xod_menu")]
     ])
 
+
+# ==================== HELPER FUNCTIONS ====================
+
+async def show_statistics(update: Update, xodim_ism: str, stats: dict, sana_1: str, sana_2: str):
+    """Display attendance statistics"""
+    days_in_range = stats['days_in_range']
+    total_entries = stats['total_entries']
+    normal_days = stats['normal_days']
+    absent_days = stats['absent_days']
+    reason_days = stats['reason_days']
+    sick_days = stats['sick_days']
+    vacation_days = stats['vacation_days']
+    late_days = stats['late_days']
+    avg_delay = stats['avg_delay']
+
+    # Calculate percentages
+    attendance_pct = (total_entries / days_in_range * 100) if days_in_range > 0 else 0
+
+    xabar = f"📊 *{xodim_ism}* — STATISTIKA\n"
+    xabar += f"📅 {sana_1} → {sana_2}\n"
+    xabar += f"━━━━━━━━━━━━━━━━━━\n\n"
+
+    xabar += f"📈 *DAVOMATLAR*\n"
+    xabar += f"• Jami kunlar: {days_in_range}\n"
+    xabar += f"• ✅ Kelgan: {normal_days} ({normal_days/days_in_range*100:.1f}%)\n"
+    xabar += f"• ❌ Kelmagan (sabsiz): {absent_days}\n"
+    xabar += f"• 📋 Boshqa sababli: {reason_days}\n"
+    xabar += f"  - 🤒 Kasal: {sick_days}\n"
+    xabar += f"  - 🎉 Ta'til: {vacation_days}\n"
+    xabar += f"• ⚠️ Kechikish: {late_days}\n"
+
+    if avg_delay > 0:
+        xabar += f"• ⏱️ O'rtacha kechikish: {kechikish_format(int(avg_delay))}\n"
+
+    xabar += f"\n📊 *DAVOMATLIK*: {attendance_pct:.1f}%\n"
+
+    await update.message.reply_text(xabar, parse_mode='Markdown')
 
 # ==================== START ====================
 
@@ -531,14 +570,76 @@ async def sa_komp_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await sa_kompaniyalar_korsatish(update, context)
 
     elif matn == "✅ Faollashtirish":
-        kompaniya_holat_ozgartir(komp_id, 'faol')
-        await update.message.reply_text("✅ Kompaniya faollashtirildi!", reply_markup=sa_menu_kb())
-        return SA_MENU
+        try:
+            logger.info(f"Faollashtirish: Toggling company {komp_id} to faol")
+            result = kompaniya_holat_ozgartir(komp_id, 'faol')
+
+            # Verify the status was actually changed
+            komp = kompaniya_olish(komp_id)
+            if not komp:
+                logger.error(f"Faollashtirish: Company {komp_id} not found after update")
+                raise Exception("Kompaniya topilmadi")
+
+            if komp[4] != 'faol':
+                logger.error(f"Faollashtirish: Company status is {komp[4]}, expected 'faol'")
+                raise Exception(f"Holat o'zgartirmadi: {komp[4]}")
+
+            logger.info(f"Faollashtirish: Company {komp_id} successfully set to faol")
+
+            emoji = "✅" if komp[4] == 'faol' else "🔴"
+            xabar = (f"✅ FAOLLASHTIRILDI!\n\n"
+                    f"🏢 *{komp[1]}*\n"
+                    f"Holat: {emoji} {komp[4]}\n\n"
+                    f"✅ Status o'zgartirildi, xodim qo'shishni boshlashingiz mumkin")
+            await update.message.reply_text(xabar, parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([
+                    ["✏️ Tahrirlash", "⚙️ Funksiyalar"],
+                    ["✅ Faollashtirish", "🔴 To'xtatish"],
+                    ["👥 Xodimlar", "📅 Davomat"],
+                    ["📆 Sana bo'yicha", "📊 Hisobot"],
+                    ["🗑 O'chirish", "🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return SA_KOMP_TANLASH
+        except Exception as e:
+            logger.error(f"Faollashtirish xatosi: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ Xatolik: {str(e)}", reply_markup=sa_menu_kb())
+            return SA_MENU
 
     elif matn == "🔴 To'xtatish":
-        kompaniya_holat_ozgartir(komp_id, 'nofaol')
-        await update.message.reply_text("🔴 Kompaniya to'xtatildi!", reply_markup=sa_menu_kb())
-        return SA_MENU
+        try:
+            logger.info(f"To'xtatish: Toggling company {komp_id} to nofaol")
+            result = kompaniya_holat_ozgartir(komp_id, 'nofaol')
+
+            # Verify the status was actually changed
+            komp = kompaniya_olish(komp_id)
+            if not komp:
+                logger.error(f"To'xtatish: Company {komp_id} not found after update")
+                raise Exception("Kompaniya topilmadi")
+
+            if komp[4] != 'nofaol':
+                logger.error(f"To'xtatish: Company status is {komp[4]}, expected 'nofaol'")
+                raise Exception(f"Holat o'zgartirmadi: {komp[4]}")
+
+            logger.info(f"To'xtatish: Company {komp_id} successfully set to nofaol")
+
+            emoji = "✅" if komp[4] == 'faol' else "🔴"
+            xabar = (f"🔴 TO'XTATILDI!\n\n"
+                    f"🏢 *{komp[1]}*\n"
+                    f"Holat: {emoji} {komp[4]}\n\n"
+                    f"⚠️ Ushbu kompaniya faollashtiriguncha xodimlar qo'shilmaydi")
+            await update.message.reply_text(xabar, parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([
+                    ["✏️ Tahrirlash", "⚙️ Funksiyalar"],
+                    ["✅ Faollashtirish", "🔴 To'xtatish"],
+                    ["👥 Xodimlar", "📅 Davomat"],
+                    ["📆 Sana bo'yicha", "📊 Hisobot"],
+                    ["🗑 O'chirish", "🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return SA_KOMP_TANLASH
+        except Exception as e:
+            logger.error(f"To'xtatish xatosi: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ Xatolik: {str(e)}", reply_markup=sa_menu_kb())
+            return SA_MENU
 
     elif matn == "🗑 O'chirish":
         komp = kompaniya_olish(komp_id)
@@ -808,6 +909,8 @@ async def sa_komp_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TY
             ], resize_keyboard=True))
         return SA_KOMP_TANLASH
     if matn == "➕ Xodim qo'shish":
+        # FIX: Set komp_id for the shared employee adding flow
+        context.user_data['komp_id'] = komp_id
         await update.message.reply_text("👤 Xodim ismini kiriting:", reply_markup=ReplyKeyboardRemove())
         return ADM_XODIM_ISM
     try:
@@ -822,6 +925,7 @@ async def sa_komp_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["✏️ Tahrirlash", "🗑 O'chirish"],
+                ["📅 Davomatni ko'rish", "📊 Statistika"],
                 ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_XODIM_AMAL
@@ -834,6 +938,21 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if matn == "🔙 Orqaga":
         await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
         return SA_MENU
+    elif matn == "📅 Davomatni ko'rish":
+        context.user_data['view_xodim_id'] = xodim_id
+        await update.message.reply_text(
+            f"📅 Sana (YYYY-MM-DD) yoki oy (YYYY-MM):\n\nMisol: 2026-05-24 yoki 2026-05",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_KOMP_XODIM_VIEW_SANA
+    elif matn == "📊 Statistika":
+        context.user_data['stat_xodim_id'] = xodim_id
+        await update.message.reply_text(
+            "📊 Davr tanlang:",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📅 Oylik", "📆 Yillik"],
+                ["📍 Custom sana", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return SA_KOMP_XODIM_STAT_FORMAT
     elif matn == "🗑 O'chirish":
         komp_id = context.user_data.get('sa_komp_id')
         x = xodim_olish(xodim_id)
@@ -928,6 +1047,170 @@ async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['tahrir_qaytish'] = 'sa'
         return ADM_XODIM_TAHRIR_Q
     return SA_KOMP_XODIM_TAHRIR
+
+async def sa_komp_xodim_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - View specific employee attendance"""
+    matn = update.message.text.strip()
+
+    if matn == "🔙 Orqaga":
+        komp_id = context.user_data.get('sa_komp_id')
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("👥 *Xodimlar yo'q*\n\nYangi xodim qo'shing:",
+                reply_markup=ReplyKeyboardMarkup([["➕ Xodim qo'shish", "🔙 Orqaga"]], resize_keyboard=True))
+            return SA_KOMP_XODIM_TANLASH
+
+        xabar = "👥 *Xodimlar:*\n\n"
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            xabar += f"• `{i}` *{x[1]}* (ID:{x[0]}) — {x[2]} | 🎭{x[7]}\n"
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return SA_KOMP_XODIM_TANLASH
+
+    sana_matn = matn
+    xodim_id = context.user_data.get('view_xodim_id')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    # Validate date format
+    if not (len(sana_matn) == 7 or len(sana_matn) == 10):  # YYYY-MM or YYYY-MM-DD
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\n"
+            f"Iltimos, format shunga mos kelsin:\n"
+            f"• Oy uchun: 2026-05\n"
+            f"• Kun uchun: 2026-05-24",
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_XODIM_VIEW_SANA
+
+    try:
+        davomatlar = xodim_davomati(xodim_id, sana_matn if len(sana_matn) == 7 else None)
+
+        # Filter by specific date if provided
+        if len(sana_matn) == 10:
+            davomatlar = [d for d in davomatlar if d[1] == sana_matn]
+
+        if not davomatlar:
+            await update.message.reply_text(
+                f"❌ {xodim_ism} uchun {sana_matn} davomati yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_KOMP_XODIM_VIEW_SANA
+
+        xabar = f"📅 *{xodim_ism}* — {sana_matn}:\n\n"
+        xabar += f"👥 Jami: {len(davomatlar)} ta\n\n"
+
+        for d in davomatlar:
+            sana, keldi, ketdi, ish_soat, kechikish, holat = d[1], d[2], d[3], d[4], d[5], d[6]
+            xabar += f"📅 *{sana}*\n"
+            xabar += f"  ⏰ {keldi or '—'} → {ketdi or '—'}"
+            if kechikish and kechikish > 0:
+                xabar += f" ⚠️{kechikish_format(kechikish)}"
+            xabar += f"\n  📋 {holat}\n\n"
+
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_XODIM_VIEW_SANA
+    except Exception as e:
+        logger.error(f"SA xodim davomati ko'rish xatosi: {e}")
+        await update.message.reply_text(f"❌ Xatolik: {e}",
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_KOMP_XODIM_VIEW_SANA
+
+async def sa_komp_xodim_stat_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Select statistics period format"""
+    matn = update.message.text
+    xodim_id = context.user_data.get('stat_xodim_id')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
+        return SA_MENU
+    elif matn == "📅 Oylik":
+        await update.message.reply_text(
+            f"📅 Oy kiriting (YYYY-MM):\n\nMisol: 2026-05",
+            reply_markup=ReplyKeyboardRemove())
+        context.user_data['stat_format'] = 'monthly'
+        return SA_KOMP_XODIM_STAT_SANA_1
+    elif matn == "📆 Yillik":
+        bugun = hozir()
+        sana1 = bugun.replace(month=1, day=1).strftime("%Y-%m-%d")
+        sana2 = bugun.strftime("%Y-%m-%d")
+        stats = xodim_statistika(xodim_id, sana1, sana2)
+        await show_statistics(update, xodim_ism, stats, sana1, sana2)
+        await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
+        return SA_MENU
+    elif matn == "📍 Custom sana":
+        await update.message.reply_text(
+            f"📅 Boshlang'ich sana (YYYY-MM-DD):\n\nMisol: 2026-01-01",
+            reply_markup=ReplyKeyboardRemove())
+        context.user_data['stat_format'] = 'custom'
+        return SA_KOMP_XODIM_STAT_SANA_1
+    return SA_KOMP_XODIM_STAT_FORMAT
+
+async def sa_komp_xodim_stat_sana_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Statistics first date input"""
+    sana_matn = update.message.text.strip()
+    xodim_id = context.user_data.get('stat_xodim_id')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+    stat_format = context.user_data.get('stat_format')
+
+    try:
+        if stat_format == 'monthly':
+            if len(sana_matn) != 7 or sana_matn[4] != '-':
+                raise ValueError("Invalid format")
+            sana1 = f"{sana_matn}-01"
+            yil, oy = sana_matn.split('-')
+            # Get last day of month
+            if oy == '12':
+                sana2 = f"{int(yil)+1}-01-01"
+            else:
+                sana2 = f"{yil}-{str(int(oy)+1).zfill(2)}-01"
+            sana2 = (datetime.strptime(sana2, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+            stats = xodim_statistika(xodim_id, sana1, sana2)
+            await show_statistics(update, xodim_ism, stats, sana1, sana2)
+            await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
+            return SA_MENU
+        else:  # custom
+            if len(sana_matn) != 10 or sana_matn[4] != '-' or sana_matn[7] != '-':
+                raise ValueError("Invalid format")
+            context.user_data['stat_sana_1'] = sana_matn
+            await update.message.reply_text(
+                f"📅 Tugatish sanasi (YYYY-MM-DD):\n\nMisol: 2026-12-31",
+                reply_markup=ReplyKeyboardRemove())
+            return SA_KOMP_XODIM_STAT_SANA_2
+    except:
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\nIltimos shunga mos kelsin: YYYY-MM-DD",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_KOMP_XODIM_STAT_SANA_1
+
+async def sa_komp_xodim_stat_sana_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Statistics second date input (custom range end)"""
+    sana_matn = update.message.text.strip()
+    xodim_id = context.user_data.get('stat_xodim_id')
+    sana1 = context.user_data.get('stat_sana_1')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    try:
+        if len(sana_matn) != 10 or sana_matn[4] != '-' or sana_matn[7] != '-':
+            raise ValueError("Invalid format")
+        stats = xodim_statistika(xodim_id, sana1, sana_matn)
+        await show_statistics(update, xodim_ism, stats, sana1, sana_matn)
+        await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
+        return SA_MENU
+    except:
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\nIltimos shunga mos kelsin: YYYY-MM-DD",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_KOMP_XODIM_STAT_SANA_2
 
 async def sa_adm_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
@@ -1325,24 +1608,66 @@ async def adm_xodim_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if rol not in ('xodim', 'hr'):
         await update.message.reply_text("❌ xodim yoki hr tanlang!")
         return ADM_XODIM_ROL
-    komp_id = context.user_data.get('komp_id')
-    kod = random_kod()
-    xodim_id = xodim_qoshish(context.user_data['y_ism'], context.user_data['y_tel'],
-                  context.user_data['y_lav'], context.user_data['y_oylik'],
-                  context.user_data['y_bosh'], context.user_data['y_tug'],
-                  komp_id, rol, kod)
 
-    # AUDIT LOG
-    user_id = update.effective_user.id
-    user_ism = update.effective_user.first_name or 'Admin'
-    tafsilot = f"Yangi xodim: {context.user_data['y_ism']} | Tel: {context.user_data['y_tel']} | Rol: {rol}"
-    audit_log_qoshish(komp_id, 'XODIM_QO\'SHISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+    try:
+        komp_id = context.user_data.get('komp_id')
 
-    await update.message.reply_text(
-        f"✅ *Xodim qo'shildi!*\n\n👤 {context.user_data['y_ism']}\n"
-        f"💼 {context.user_data['y_lav']}\n🎭 {rol}\n🔑 Kod: `{kod}`\n\n⚠️ Kodni xodimga bering!",
-        parse_mode='Markdown', reply_markup=adm_menu_kb())
-    return ADM_MENU
+        # Validate komp_id is set
+        if not komp_id:
+            logger.error("ADM_XODIM_ROL: komp_id not set in context!")
+            await update.message.reply_text("❌ Xatolik: Kompaniya tanlangan emas!", reply_markup=adm_menu_kb())
+            return ADM_MENU
+
+        # Verify company exists and is faol
+        komp = kompaniya_olish(komp_id)
+        if not komp:
+            logger.error(f"ADM_XODIM_ROL: Company {komp_id} not found!")
+            await update.message.reply_text("❌ Xatolik: Kompaniya topilmadi!", reply_markup=adm_menu_kb())
+            return ADM_MENU
+
+        if komp[4] != 'faol':
+            logger.warning(f"ADM_XODIM_ROL: Company {komp_id} is not faol (status: {komp[4]})")
+            await update.message.reply_text(
+                f"❌ Xatolik: Kompaniya faol emas!\n\n"
+                f"Holat: 🔴 {komp[4]}\n\n"
+                f"Iltimos, kompaniyani faollashtiring va qayta urinib ko'ring.",
+                reply_markup=adm_menu_kb())
+            return ADM_MENU
+
+        kod = random_kod()
+        logger.info(f"ADM_XODIM_ROL: Adding employee {context.user_data['y_ism']} to company {komp_id} (status: {komp[4]})")
+
+        xodim_id = xodim_qoshish(context.user_data['y_ism'], context.user_data['y_tel'],
+                      context.user_data['y_lav'], context.user_data['y_oylik'],
+                      context.user_data['y_bosh'], context.user_data['y_tug'],
+                      komp_id, rol, kod)
+
+        if not xodim_id:
+            logger.error(f"ADM_XODIM_ROL: xodim_qoshish returned None for {context.user_data['y_ism']}")
+            await update.message.reply_text("❌ Xatolik: Xodim qo'shilmadi!", reply_markup=adm_menu_kb())
+            return ADM_MENU
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Admin'
+        tafsilot = f"Yangi xodim: {context.user_data['y_ism']} | Tel: {context.user_data['y_tel']} | Rol: {rol}"
+        audit_log_qoshish(komp_id, 'XODIM_QO\'SHISH', tafsilot, xodim_id, user_id=user_id, user_ism=user_ism)
+
+        # Check if Super Admin (sa_komp_id set) or regular Admin (komp_id set)
+        is_sa = context.user_data.get('sa_komp_id') is not None
+
+        logger.info(f"ADM_XODIM_ROL: Employee {xodim_id} added successfully, is_sa={is_sa}")
+
+        await update.message.reply_text(
+            f"✅ *Xodim qo'shildi!*\n\n👤 {context.user_data['y_ism']}\n"
+            f"💼 {context.user_data['y_lav']}\n🎭 {rol}\n🔑 Kod: `{kod}`\n\n⚠️ Kodni xodimga bering!",
+            parse_mode='Markdown', reply_markup=sa_menu_kb() if is_sa else adm_menu_kb())
+        return SA_MENU if is_sa else ADM_MENU
+
+    except Exception as e:
+        logger.error(f"ADM_XODIM_ROL Error: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Xatolik: {str(e)}", reply_markup=adm_menu_kb())
+        return ADM_MENU
 
 async def adm_xodim_delete_kod(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin o'chirish kodi tekshiruvi"""
@@ -1434,7 +1759,9 @@ async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["📝 Ism", "💼 Lavozim"],
                 ["📱 Telefon", "💰 Oylik"],
                 ["⏰ Ish vaqti", "🎭 Rol"],
-                ["🔑 Kod", "🔙 Orqaga"]
+                ["🔑 Kod"],
+                ["📅 Davomatni ko'rish", "📊 Statistika"],
+                ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return ADM_XODIM_TAHRIR
     except:
@@ -1445,6 +1772,23 @@ async def adm_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
+    elif matn == "📅 Davomatni ko'rish":
+        xodim_id = context.user_data.get('tahrir_xodim_id')
+        context.user_data['view_xodim_id'] = xodim_id
+        await update.message.reply_text(
+            f"📅 Sana (YYYY-MM-DD) yoki oy (YYYY-MM):\n\nMisol: 2026-05-24 yoki 2026-05",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_KOMP_XODIM_VIEW_SANA
+    elif matn == "📊 Statistika":
+        xodim_id = context.user_data.get('tahrir_xodim_id')
+        context.user_data['stat_xodim_id'] = xodim_id
+        await update.message.reply_text(
+            "📊 Davr tanlang:",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📅 Oylik", "📆 Yillik"],
+                ["📍 Custom sana", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return ADM_KOMP_XODIM_STAT_FORMAT
     maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "📱 Telefon": "telefon", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
@@ -1469,6 +1813,170 @@ async def adm_xodim_tahrir_q(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return SA_MENU
     await update.message.reply_text("✅ Saqlandi!", reply_markup=adm_menu_kb())
     return ADM_MENU
+
+async def adm_komp_xodim_view_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - View specific employee attendance"""
+    matn = update.message.text.strip()
+
+    if matn == "🔙 Orqaga":
+        komp_id = context.user_data.get('komp_id')
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("👥 *Xodimlar yo'q*\n\nYangi xodim qo'shing:",
+                reply_markup=ReplyKeyboardMarkup([["➕ Xodim qo'shish", "🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XODIM_TANLASH
+
+        xabar = "👥 *Xodimlar:*\n\n"
+        tugmalar = []
+        xodim_id_map = {}
+        for i, x in enumerate(xodimlar, 1):
+            xabar += f"• `{i}` *{x[1]}* (ID:{x[0]}) — {x[2]} | 🎭{x[7]}\n"
+            tugmalar.append([f"{i}. {x[1]}"])
+            xodim_id_map[str(i)] = x[0]
+        context.user_data['xodim_id_map'] = xodim_id_map
+        tugmalar.append(["➕ Xodim qo'shish", "🔙 Orqaga"])
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return ADM_XODIM_TANLASH
+
+    sana_matn = matn
+    xodim_id = context.user_data.get('view_xodim_id')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    # Validate date format
+    if not (len(sana_matn) == 7 or len(sana_matn) == 10):  # YYYY-MM or YYYY-MM-DD
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\n"
+            f"Iltimos, format shunga mos kelsin:\n"
+            f"• Oy uchun: 2026-05\n"
+            f"• Kun uchun: 2026-05-24",
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return ADM_KOMP_XODIM_VIEW_SANA
+
+    try:
+        davomatlar = xodim_davomati(xodim_id, sana_matn if len(sana_matn) == 7 else None)
+
+        # Filter by specific date if provided
+        if len(sana_matn) == 10:
+            davomatlar = [d for d in davomatlar if d[1] == sana_matn]
+
+        if not davomatlar:
+            await update.message.reply_text(
+                f"❌ {xodim_ism} uchun {sana_matn} davomati yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_KOMP_XODIM_VIEW_SANA
+
+        xabar = f"📅 *{xodim_ism}* — {sana_matn}:\n\n"
+        xabar += f"👥 Jami: {len(davomatlar)} ta\n\n"
+
+        for d in davomatlar:
+            sana, keldi, ketdi, ish_soat, kechikish, holat = d[1], d[2], d[3], d[4], d[5], d[6]
+            xabar += f"📅 *{sana}*\n"
+            xabar += f"  ⏰ {keldi or '—'} → {ketdi or '—'}"
+            if kechikish and kechikish > 0:
+                xabar += f" ⚠️{kechikish_format(kechikish)}"
+            xabar += f"\n  📋 {holat}\n\n"
+
+        await update.message.reply_text(xabar, parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return ADM_KOMP_XODIM_VIEW_SANA
+    except Exception as e:
+        logger.error(f"Admin xodim davomati ko'rish xatosi: {e}")
+        await update.message.reply_text(f"❌ Xatolik: {e}",
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return ADM_KOMP_XODIM_VIEW_SANA
+
+async def adm_komp_xodim_stat_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Select statistics period format"""
+    matn = update.message.text
+    xodim_id = context.user_data.get('stat_xodim_id')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+    elif matn == "📅 Oylik":
+        await update.message.reply_text(
+            f"📅 Oy kiriting (YYYY-MM):\n\nMisol: 2026-05",
+            reply_markup=ReplyKeyboardRemove())
+        context.user_data['stat_format'] = 'monthly'
+        return ADM_KOMP_XODIM_STAT_SANA_1
+    elif matn == "📆 Yillik":
+        bugun = hozir()
+        sana1 = bugun.replace(month=1, day=1).strftime("%Y-%m-%d")
+        sana2 = bugun.strftime("%Y-%m-%d")
+        stats = xodim_statistika(xodim_id, sana1, sana2)
+        await show_statistics(update, xodim_ism, stats, sana1, sana2)
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+    elif matn == "📍 Custom sana":
+        await update.message.reply_text(
+            f"📅 Boshlang'ich sana (YYYY-MM-DD):\n\nMisol: 2026-01-01",
+            reply_markup=ReplyKeyboardRemove())
+        context.user_data['stat_format'] = 'custom'
+        return ADM_KOMP_XODIM_STAT_SANA_1
+    return ADM_KOMP_XODIM_STAT_FORMAT
+
+async def adm_komp_xodim_stat_sana_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Statistics first date input"""
+    sana_matn = update.message.text.strip()
+    xodim_id = context.user_data.get('stat_xodim_id')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+    stat_format = context.user_data.get('stat_format')
+
+    try:
+        if stat_format == 'monthly':
+            if len(sana_matn) != 7 or sana_matn[4] != '-':
+                raise ValueError("Invalid format")
+            sana1 = f"{sana_matn}-01"
+            yil, oy = sana_matn.split('-')
+            # Get last day of month
+            if oy == '12':
+                sana2 = f"{int(yil)+1}-01-01"
+            else:
+                sana2 = f"{yil}-{str(int(oy)+1).zfill(2)}-01"
+            sana2 = (datetime.strptime(sana2, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+            stats = xodim_statistika(xodim_id, sana1, sana2)
+            await show_statistics(update, xodim_ism, stats, sana1, sana2)
+            await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
+            return ADM_MENU
+        else:  # custom
+            if len(sana_matn) != 10 or sana_matn[4] != '-' or sana_matn[7] != '-':
+                raise ValueError("Invalid format")
+            context.user_data['stat_sana_1'] = sana_matn
+            await update.message.reply_text(
+                f"📅 Tugatish sanasi (YYYY-MM-DD):\n\nMisol: 2026-12-31",
+                reply_markup=ReplyKeyboardRemove())
+            return ADM_KOMP_XODIM_STAT_SANA_2
+    except:
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\nIltimos shunga mos kelsin: YYYY-MM-DD",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_KOMP_XODIM_STAT_SANA_1
+
+async def adm_komp_xodim_stat_sana_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Statistics second date input (custom range end)"""
+    sana_matn = update.message.text.strip()
+    xodim_id = context.user_data.get('stat_xodim_id')
+    sana1 = context.user_data.get('stat_sana_1')
+    xodim = xodim_olish(xodim_id)
+    xodim_ism = xodim[1] if xodim else "Noma'lum"
+
+    try:
+        if len(sana_matn) != 10 or sana_matn[4] != '-' or sana_matn[7] != '-':
+            raise ValueError("Invalid format")
+        stats = xodim_statistika(xodim_id, sana1, sana_matn)
+        await show_statistics(update, xodim_ism, stats, sana1, sana_matn)
+        await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+    except:
+        await update.message.reply_text(
+            f"❌ Noto'g'ri format!\n\nIltimos shunga mos kelsin: YYYY-MM-DD",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_KOMP_XODIM_STAT_SANA_2
 
 async def adm_dav_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
@@ -2267,6 +2775,7 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
     xodim_id = context.user_data.get('xodim_id')
     komp_id = context.user_data.get('komp_id')
+    logger.info(f"XOD_MENU: matn='{matn}' xodim_id={xodim_id} komp_id={komp_id}")
     komp = kompaniya_olish(komp_id)
     if not komp or komp[4] != 'faol':
         await update.message.reply_text("⛔️ Kompaniyangiz faol emas!")
@@ -2368,43 +2877,6 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if d[5] and d[5] > 0: xabar += f" ⚠️{kechikish_format(d[5])}"
                 xabar += "\n"
             await update.message.reply_text(xabar, parse_mode='Markdown')
-        return XOD_MENU
-
-    elif matn == "📊 Statistikam":
-        oy = hozir().strftime("%Y-%m")
-        stat = xodim_oy_statistika(xodim_id, oy)
-        xodim = xodim_olish(xodim_id)
-        komp_id = context.user_data.get('komp_id')
-        streak = xodim_streak_olish(xodim_id)
-
-        if stat:
-            kun, jami_soat, kechikish_kun, jami_kechikish, sababli, sababsiz = stat
-            s = int(float(jami_soat)); d = int((float(jami_soat) - s) * 60)
-            xabar = (f"📊 *{oy} oy statistikasi*\n"
-                    f"👤 {xodim[1] if xodim else ''}\n\n"
-                    f"📅 Kelgan kunlar: {kun}\n"
-                    f"⏱ Jami ish vaqti: {s} soat {d} daqiqa\n"
-                    f"⚠️ Kechikkan kunlar: {kechikish_kun}\n"
-                    f"🕐 Jami kechikish: {kechikish_format(jami_kechikish)}\n"
-                    f"📝 Sababli: {sababli} kun\n"
-                    f"❌ Sababsiz: {sababsiz} kun")
-
-            # Streak va reyting
-            if streak > 0: xabar += f"\n\n🔥 *Streakingiz: {streak} kun!*"
-            if kechikish_kun == 0 and kun > 0: xabar += f"\n🏅 *Bu oy 0 kechikish!* Ajoyib!"
-
-            # Haftalik reyting
-            rating = haftalik_reyting_xodimlar(komp_id)
-            if rating:
-                xabar += f"\n\n🏆 *HAFTALIK TOP 5 XODIMLAR:*\n"
-                for i, r in enumerate(rating, 1):
-                    medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i-1]
-                    ort_kech = r[6] if r[6] else 0
-                    xabar += f"{medal} {r[1]} - {kechikish_format(int(ort_kech))} ort.kechikish\n"
-
-            await update.message.reply_text(xabar, parse_mode='Markdown')
-        else:
-            await update.message.reply_text("📊 Bu oy ma'lumot yo'q.")
         return XOD_MENU
 
     elif matn == "📝 Sababli so'rov":
@@ -3311,6 +3783,10 @@ def main():
             SA_KOMP_XODIM_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_tanlash)],
             SA_KOMP_XODIM_AMAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_amal)],
             SA_KOMP_XODIM_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_tahrir)],
+            SA_KOMP_XODIM_VIEW_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_view_sana)],
+            SA_KOMP_XODIM_STAT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_stat_format)],
+            SA_KOMP_XODIM_STAT_SANA_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_stat_sana_1)],
+            SA_KOMP_XODIM_STAT_SANA_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_xodim_stat_sana_2)],
             SA_KOMP_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_komp_delete_kod)],
             SA_HISOBOT_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana)],
             SA_HISOBOT_KUN: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana)],
@@ -3326,6 +3802,10 @@ def main():
             ADM_XODIM_TANLASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tanlash)],
             ADM_XODIM_TAHRIR: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir)],
             ADM_XODIM_TAHRIR_Q: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_tahrir_q)],
+            ADM_KOMP_XODIM_VIEW_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_komp_xodim_view_sana)],
+            ADM_KOMP_XODIM_STAT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_komp_xodim_stat_format)],
+            ADM_KOMP_XODIM_STAT_SANA_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_komp_xodim_stat_sana_1)],
+            ADM_KOMP_XODIM_STAT_SANA_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_komp_xodim_stat_sana_2)],
             SA_XODIM_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xodim_delete_kod)],
             ADM_XODIM_DELETE_KOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xodim_delete_kod)],
             ADM_GPS_LOK: [

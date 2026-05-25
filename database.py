@@ -228,9 +228,23 @@ def kompaniya_olish(komp_id):
     r = cur.fetchone(); cur.close(); conn.close(); return r
 
 def kompaniya_holat_ozgartir(komp_id, holat):
-    conn = connect(); cur = conn.cursor()
-    cur.execute("UPDATE kompaniyalar SET holat=%s WHERE id=%s", (holat, komp_id))
-    conn.commit(); cur.close(); conn.close()
+    try:
+        conn = connect(); cur = conn.cursor()
+        cur.execute("UPDATE kompaniyalar SET holat=%s WHERE id=%s", (holat, komp_id))
+        rows_updated = cur.rowcount
+        conn.commit(); cur.close(); conn.close()
+        if rows_updated == 0:
+            raise Exception(f"No company found with id {komp_id}")
+        return True
+    except Exception as e:
+        if 'conn' in locals():
+            try:
+                conn.rollback()
+            except:
+                pass
+            cur.close()
+            conn.close()
+        raise Exception(f"Failed to update company status: {str(e)}")
 
 def kompaniya_funksiya_ozgartir(komp_id, funksiya, qiymat):
     conn = connect(); cur = conn.cursor()
@@ -353,13 +367,34 @@ def barcha_komp_bugun_rasmlar():
 # ========== XODIMLAR ==========
 
 def xodim_qoshish(ism, telefon, lavozim, oylik, ish_bosh, ish_tug, komp_id, rol, kod):
-    conn = connect(); cur = conn.cursor()
-    sana = hozir().strftime("%Y-%m-%d")
-    cur.execute('''INSERT INTO xodimlar(ism,telefon,lavozim,oylik,ish_boshlanish,
-                  ish_tugash,kompaniya_id,rol,kod,ishga_kirgan)
-                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
-                (ism,telefon,lavozim,oylik,ish_bosh,ish_tug,komp_id,rol,kod,sana))
-    xid = cur.fetchone()[0]; conn.commit(); cur.close(); conn.close(); return xid
+    try:
+        conn = connect(); cur = conn.cursor()
+        sana = hozir().strftime("%Y-%m-%d")
+        cur.execute('''INSERT INTO xodimlar(ism,telefon,lavozim,oylik,ish_boshlanish,
+                      ish_tugash,kompaniya_id,rol,kod,ishga_kirgan)
+                      VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                    (ism,telefon,lavozim,oylik,ish_bosh,ish_tug,komp_id,rol,kod,sana))
+        xid = cur.fetchone()
+        if xid:
+            xid = xid[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            return xid
+        else:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            raise Exception("Failed to insert employee: No ID returned")
+    except Exception as e:
+        if 'conn' in locals():
+            try:
+                conn.rollback()
+            except:
+                pass
+            cur.close()
+            conn.close()
+        raise Exception(f"Employee add failed: {str(e)}")
 
 def xodim_ochirish(xodim_id):
     conn = connect(); cur = conn.cursor()
@@ -1212,3 +1247,49 @@ def generate_ketdi_motivation(xodim, ish_tugash, ketdi_vaqt, ish_soat, streak):
     else:
         return (f"❌ *JIDDIY ERTA KETISH!* ({farq_fmt} oldin)\n"
                 f"Bu intizom buzilishi! HR va admin xabardor qilindi! 🚫")
+
+def xodim_statistika(xodim_id, sana_1, sana_2):
+    """Calculate attendance statistics for a date range"""
+    conn = connect(); cur = conn.cursor()
+
+    # Get all days in range
+    sana1 = datetime.strptime(sana_1, "%Y-%m-%d")
+    sana2 = datetime.strptime(sana_2, "%Y-%m-%d")
+    days_in_range = (sana2 - sana1).days + 1
+
+    # Get attendance data
+    cur.execute('''SELECT COUNT(*),
+                   SUM(CASE WHEN holat='normal' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN holat='sabsiz' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN holat='sababli' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN holat='kasal' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN holat='ta\'til' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN kechikish > 0 THEN 1 ELSE 0 END),
+                   AVG(CASE WHEN kechikish > 0 THEN kechikish ELSE NULL END)
+                FROM davomat
+                WHERE xodim_id=%s AND sana BETWEEN %s AND %s''',
+                (xodim_id, sana_1, sana_2))
+    r = cur.fetchone()
+
+    total_entries = r[0] or 0
+    normal_days = r[1] or 0
+    absent_days = r[2] or 0
+    reason_days = r[3] or 0
+    sick_days = r[4] or 0
+    vacation_days = r[5] or 0
+    late_days = r[6] or 0
+    avg_delay = r[7] or 0
+
+    cur.close(); conn.close()
+
+    return {
+        'days_in_range': days_in_range,
+        'total_entries': total_entries,
+        'normal_days': normal_days,
+        'absent_days': absent_days,
+        'reason_days': reason_days,
+        'sick_days': sick_days,
+        'vacation_days': vacation_days,
+        'late_days': late_days,
+        'avg_delay': avg_delay
+    }
