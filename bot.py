@@ -846,9 +846,9 @@ async def sa_komp_xodim_amal(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Nimani tahrirlash?",
             reply_markup=ReplyKeyboardMarkup([
                 ["📝 Ism", "💼 Lavozim"],
-                ["💰 Oylik", "⏰ Ish vaqti"],
-                ["🎭 Rol", "🔑 Kod"],
-                ["🔙 Orqaga"]
+                ["📱 Telefon", "💰 Oylik"],
+                ["⏰ Ish vaqti", "🎭 Rol"],
+                ["🔑 Kod", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return SA_KOMP_XODIM_TAHRIR
     return SA_KOMP_XODIM_AMAL
@@ -909,7 +909,7 @@ async def sa_komp_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYP
     if matn == "🔙 Orqaga":
         await update.message.reply_text("👑 Menu:", reply_markup=sa_menu_kb())
         return SA_MENU
-    maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
+    maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "📱 Telefon": "telefon", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
         await update.message.reply_text(f"Yangi {matn}:", reply_markup=ReplyKeyboardRemove())
@@ -1425,9 +1425,9 @@ async def adm_xodim_tanlash(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
                 ["📝 Ism", "💼 Lavozim"],
-                ["💰 Oylik", "⏰ Ish vaqti"],
-                ["🎭 Rol", "🔑 Kod"],
-                ["🔙 Orqaga"]
+                ["📱 Telefon", "💰 Oylik"],
+                ["⏰ Ish vaqti", "🎭 Rol"],
+                ["🔑 Kod", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return ADM_XODIM_TAHRIR
     except:
@@ -1438,7 +1438,7 @@ async def adm_xodim_tahrir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if matn == "🔙 Orqaga":
         await update.message.reply_text("🏢 Admin menu:", reply_markup=adm_menu_kb())
         return ADM_MENU
-    maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
+    maydon_map = {"📝 Ism": "ism", "💼 Lavozim": "lavozim", "📱 Telefon": "telefon", "💰 Oylik": "oylik", "🎭 Rol": "rol", "🔑 Kod": "kod"}
     if matn in maydon_map:
         context.user_data['tahrir_maydon'] = maydon_map[matn]
         context.user_data['tahrir_qaytish'] = 'adm'
