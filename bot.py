@@ -346,12 +346,22 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_ADM_LIST
 
     elif matn == "📊 Umumiy hisobot":
-        await update.message.reply_text(
-            "📅 Qaysi kun uchun hisobot? (YYYY-MM-DD)\n\n"
-            "Masalan: 2026-05-24\n\n"
-            "🔔 BARCHA kompaniyalarning hisoboti ko'rsatiladi!",
-            reply_markup=ReplyKeyboardRemove())
-        return SA_HISOBOT_SANA
+        await update.message.reply_text("⏳ Barcha kompaniyalarning hisoboti tayyorlanmoqda...")
+        try:
+            fayl = super_admin_hisobot_kunlik()
+            if fayl:
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+                await update.message.reply_text(
+                    "✅ Hisobot yuklandi!\n\n"
+                    "Barcha kompaniyalarning kunlik batafsil davomati - shu kunchagacha.",
+                    reply_markup=sa_menu_kb())
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=sa_menu_kb())
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=sa_menu_kb())
+        return SA_MENU
 
     elif matn == "📸 Barcha rasmlar":
         rasmlar = barcha_komp_bugun_rasmlar()
@@ -1060,14 +1070,22 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_DAV_MENU
 
     elif matn == "📊 Hisobot":
-        await update.message.reply_text(
-            "📊 Hisobotni qaysi formatda yuklab olasiz?",
-            reply_markup=ReplyKeyboardMarkup([
-                ["📥 Excel yuklab ol"],
-                ["🔎 Kun bo'yicha"],
-                ["🔙 Orqaga"]
-            ], resize_keyboard=True))
-        return ADM_HISOBOT_SANA
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        try:
+            fayl = kompaniya_hisobot_kunlik(komp_id)
+            if fayl:
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+                await update.message.reply_text(
+                    "✅ Hisobot yuklandi!\n\n"
+                    "Kunlik batafsil davomat - shu kunchagacha.",
+                    reply_markup=adm_menu_kb())
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=adm_menu_kb())
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=adm_menu_kb())
+        return ADM_MENU
 
     elif matn == "📍 GPS sozlash":
         lat, lon, radius = get_gps(komp_id)

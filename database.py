@@ -719,6 +719,172 @@ def kompaniya_hisobot(komp_id):
     fayl = f"hisobot_{nomi}.xlsx"
     wb.save(fayl); return fayl
 
+def kompaniya_hisobot_kunlik(komp_id):
+    """Kunlik batafsil hisobot - har bir kun uchun alohida ustun"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT nomi FROM kompaniyalar WHERE id=%s", (komp_id,))
+    r = cur.fetchone()
+    if not r: return None
+    nomi = r[0]
+
+    # Bugungi oyni aniqlash
+    bugun = hozir()
+    oy_boshi = bugun.replace(day=1)
+
+    # Xodimlarni olish
+    cur.execute('''SELECT id,ism,lavozim FROM xodimlar
+                  WHERE kompaniya_id=%s ORDER BY ism''', (komp_id,))
+    xodimlar = cur.fetchall()
+
+    # Excel workbook yaratish
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Davomat"
+
+    # Header - kompaniya nomi va sana
+    ws['A1'] = f"Taskiloti: {nomi}"
+    ws['A2'] = f"Sana: {bugun.strftime('%d.%m.%Y')}"
+
+    # Ustun sarlavhalari
+    headers = ["Taskiloti", "Sana", "Xodim ismi", "Lavozimi"]
+
+    # Oy ichidagi barcha kunlar uchun ustunlar qo'shish
+    kun_raqami = 1
+    kun_dict = {}  # {kun_raqami: column_index}
+
+    current_date = oy_boshi
+    col_idx = 5  # A=1, B=2, C=3, D=4, E=5
+
+    while current_date.month == bugun.month and current_date <= bugun:
+        kun_sarlavha = current_date.strftime('%d.%m')
+        headers.append(f"Keldi\n{kun_sarlavha}")
+        headers.append(f"Ketdi\n{kun_sarlavha}")
+        kun_dict[current_date.date()] = col_idx
+        col_idx += 2
+        current_date += timedelta(days=1)
+
+    # Headers yozish
+    for col_idx, header in enumerate(headers, 1):
+        ws.cell(row=4, column=col_idx, value=header)
+
+    # Xodimlar va ularning davomati
+    row = 5
+    for xodim_id, ism, lavozim in xodimlar:
+        ws.cell(row=row, column=1, value=nomi)
+        ws.cell(row=row, column=2, value=bugun.strftime('%d.%m.%Y'))
+        ws.cell(row=row, column=3, value=ism)
+        ws.cell(row=row, column=4, value=lavozim)
+
+        # Davomat ma'lumotlarini olish
+        cur.execute('''SELECT sana,keldi,ketdi,holat FROM davomat
+                      WHERE xodim_id=%s AND sana >= %s AND sana <= %s
+                      ORDER BY sana''', (xodim_id, oy_boshi.date(), bugun.date()))
+        davomatlar = {d[0]: d for d in cur.fetchall()}
+
+        # Har bir kun uchun keldi/ketdi vaqtini yozish
+        current_date = oy_boshi
+        while current_date.month == bugun.month and current_date <= bugun:
+            sana = current_date.date()
+            col_idx = kun_dict[sana]
+
+            if sana in davomatlar:
+                _, keldi, ketdi, holat = davomatlar[sana]
+                ws.cell(row=row, column=col_idx, value=keldi or "—")
+                ws.cell(row=row, column=col_idx+1, value=ketdi or "—")
+            else:
+                # Agar davomat yo'q bo'lsa, bo'sh yoki holat ko'rsatish
+                ws.cell(row=row, column=col_idx, value="—")
+                ws.cell(row=row, column=col_idx+1, value="—")
+
+            current_date += timedelta(days=1)
+
+        row += 1
+
+    cur.close(); conn.close()
+    fayl = f"hisobot_kunlik_{nomi}_{bugun.strftime('%Y%m%d')}.xlsx"
+    wb.save(fayl)
+    return fayl
+
+def super_admin_hisobot_kunlik():
+    """Super admin uchun barcha kompaniyalarning kunlik hisoboti"""
+    conn = connect(); cur = conn.cursor()
+    bugun = hozir()
+    oy_boshi = bugun.replace(day=1)
+
+    # Barcha kompaniyalarni olish
+    cur.execute("SELECT id,nomi FROM kompaniyalar WHERE holat='faol' ORDER BY nomi")
+    kompaniyalar = cur.fetchall()
+
+    # Excel workbook yaratish
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Davomat"
+
+    ws['A1'] = "BARCHA KOMPANIYALAR DAVOMATI"
+    ws['A2'] = f"Sana: {bugun.strftime('%d.%m.%Y')}"
+
+    # Ustun sarlavhalari
+    headers = ["Taskiloti", "Sana", "Xodim ismi", "Lavozimi"]
+
+    # Oy ichidagi barcha kunlar uchun ustunlar
+    kun_dict = {}
+    current_date = oy_boshi
+    col_idx = 5
+
+    while current_date.month == bugun.month and current_date <= bugun:
+        kun_sarlavha = current_date.strftime('%d.%m')
+        headers.append(f"Keldi\n{kun_sarlavha}")
+        headers.append(f"Ketdi\n{kun_sarlavha}")
+        kun_dict[current_date.date()] = col_idx
+        col_idx += 2
+        current_date += timedelta(days=1)
+
+    # Headers yozish
+    for col_idx, header in enumerate(headers, 1):
+        ws.cell(row=4, column=col_idx, value=header)
+
+    # Barcha xodimlar bo'yicha
+    row = 5
+    for komp_id, komp_nomi in kompaniyalar:
+        cur.execute('''SELECT id,ism,lavozim FROM xodimlar
+                      WHERE kompaniya_id=%s ORDER BY ism''', (komp_id,))
+        xodimlar = cur.fetchall()
+
+        for xodim_id, ism, lavozim in xodimlar:
+            ws.cell(row=row, column=1, value=komp_nomi)
+            ws.cell(row=row, column=2, value=bugun.strftime('%d.%m.%Y'))
+            ws.cell(row=row, column=3, value=ism)
+            ws.cell(row=row, column=4, value=lavozim)
+
+            # Davomat ma'lumotlarini olish
+            cur.execute('''SELECT sana,keldi,ketdi FROM davomat
+                          WHERE xodim_id=%s AND sana >= %s AND sana <= %s
+                          ORDER BY sana''', (xodim_id, oy_boshi.date(), bugun.date()))
+            davomatlar = {d[0]: d for d in cur.fetchall()}
+
+            # Har bir kun uchun keldi/ketdi
+            current_date = oy_boshi
+            while current_date.month == bugun.month and current_date <= bugun:
+                sana = current_date.date()
+                col_idx = kun_dict[sana]
+
+                if sana in davomatlar:
+                    _, keldi, ketdi = davomatlar[sana]
+                    ws.cell(row=row, column=col_idx, value=keldi or "—")
+                    ws.cell(row=row, column=col_idx+1, value=ketdi or "—")
+                else:
+                    ws.cell(row=row, column=col_idx, value="—")
+                    ws.cell(row=row, column=col_idx+1, value="—")
+
+                current_date += timedelta(days=1)
+
+            row += 1
+
+    cur.close(); conn.close()
+    fayl = f"hisobot_barcha_{bugun.strftime('%Y%m%d')}.xlsx"
+    wb.save(fayl)
+    return fayl
+
 # ========== AUDIT LOG ==========
 
 def audit_log_qoshish(komp_id, amal, tafsilot, xodim_id=None, rasm_id=None, video_id=None, user_id=None, user_ism=None):
