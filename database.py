@@ -858,40 +858,82 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
 
     davomatlar = cur.fetchall()
 
-    # Data yozish
-    row = 5
-    for komp_nomi, sana, xodim_ism, lavozim, keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id in davomatlar:
-        # Kirituvchi ismini olish
-        yaratgan = "BOT"
-        if kiritdi and kiritdi != 'bot':
-            # User ism/telegramni olish
-            if kiritdi == 'xodim':
-                cur2 = connect().cursor()
-                cur2.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (kiritdi_id,))
-                result = cur2.fetchone()
-                yaratgan = result[0] if result else "XODIM"
-                cur2.close()
-            elif kiritdi in ['admin', 'super_admin', 'hr']:
-                cur2 = connect().cursor()
-                # Admin/HR uchun super_adminlar yoki kompaniyalarni tekshir
-                cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
-                result = cur2.fetchone()
-                if result:
-                    yaratgan = result[0]
-                cur2.close()
+    # Har bir kun uchun iteratsiya qilish
+    from datetime import date, timedelta
+    current_date = datetime.strptime(sana_from, "%Y-%m-%d").date()
+    end_date = datetime.strptime(sana_to, "%Y-%m-%d").date()
 
-        ws.cell(row=row, column=1, value=komp_nomi)
-        ws.cell(row=row, column=2, value=sana)
-        ws.cell(row=row, column=3, value=xodim_ism)
-        ws.cell(row=row, column=4, value=lavozim)
-        ws.cell(row=row, column=5, value=keldi or "—")
-        ws.cell(row=row, column=6, value=ketdi or "—")
-        ws.cell(row=row, column=7, value=soat_format(ish_soat) if ish_soat else "—")
-        ws.cell(row=row, column=8, value=kechikish_format(kechikish) if kechikish else "—")
-        ws.cell(row=row, column=9, value=holat or "—")
-        ws.cell(row=row, column=10, value=izoh or "—")
-        ws.cell(row=row, column=11, value=yaratgan)  # YARATGAN ustuni
-        row += 1
+    # Xodimlarni olish
+    if super_admin:
+        cur.execute('''SELECT DISTINCT xodim_id, x.ism, x.lavozim, k.nomi
+                       FROM davomat d
+                       JOIN xodimlar x ON d.xodim_id=x.id
+                       JOIN kompaniyalar k ON d.kompaniya_id=k.id
+                       WHERE d.sana >= %s AND d.sana <= %s
+                       ORDER BY k.nomi, x.ism''', (sana_from, sana_to))
+    else:
+        cur.execute('''SELECT DISTINCT d.xodim_id, x.ism, x.lavozim, k.nomi
+                       FROM davomat d
+                       JOIN xodimlar x ON d.xodim_id=x.id
+                       JOIN kompaniyalar k ON d.kompaniya_id=k.id
+                       WHERE d.kompaniya_id=%s AND d.sana >= %s AND d.sana <= %s
+                       ORDER BY x.ism''', (komp_id, sana_from, sana_to))
+
+    xodimlar_list = cur.fetchall()
+
+    # Data yozish - har bir xodim uchun har bir kun
+    row = 5
+    for xodim_id, xodim_ism, lavozim, komp_nomi in xodimlar_list:
+        current_date = datetime.strptime(sana_from, "%Y-%m-%d").date()
+
+        while current_date <= end_date:
+            sana_str = current_date.strftime("%Y-%m-%d")
+
+            # Shu kunning davomatini qidirish
+            cur.execute('''SELECT d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh, d.kiritdi, d.kiritdi_id
+                           FROM davomat d
+                           WHERE d.xodim_id=%s AND d.sana=%s
+                           LIMIT 1''', (xodim_id, sana_str))
+            dav = cur.fetchone()
+
+            # Kirituvchi ismini olish
+            yaratgan = ""
+            if dav:
+                keldi, ketdi, ish_soat, kechikish, holat, izoh, kiritdi, kiritdi_id = dav
+
+                if kiritdi == 'bot':
+                    yaratgan = "BOT"
+                elif kiritdi == 'xodim':
+                    cur2 = connect().cursor()
+                    cur2.execute("SELECT ism FROM xodimlar WHERE id=%s", (xodim_id,))
+                    result = cur2.fetchone()
+                    yaratgan = result[0] if result else "XODIM"
+                    cur2.close()
+                elif kiritdi in ['admin', 'super_admin', 'hr']:
+                    cur2 = connect().cursor()
+                    cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
+                    result = cur2.fetchone()
+                    yaratgan = result[0] if result else kiritdi.upper()
+                    cur2.close()
+            else:
+                # Ma'lumot yo'q - bo'sh quyosh
+                keldi = ketdi = ish_soat = kechikish = holat = izoh = None
+
+            # Excel da yozish
+            ws.cell(row=row, column=1, value=komp_nomi)
+            ws.cell(row=row, column=2, value=sana_str)
+            ws.cell(row=row, column=3, value=xodim_ism)
+            ws.cell(row=row, column=4, value=lavozim)
+            ws.cell(row=row, column=5, value=keldi or "—")
+            ws.cell(row=row, column=6, value=ketdi or "—")
+            ws.cell(row=row, column=7, value=soat_format(ish_soat) if ish_soat else "—")
+            ws.cell(row=row, column=8, value=kechikish_format(kechikish) if kechikish else "—")
+            ws.cell(row=row, column=9, value=holat or "—")
+            ws.cell(row=row, column=10, value=izoh or "—")
+            ws.cell(row=row, column=11, value=yaratgan)
+
+            row += 1
+            current_date += timedelta(days=1)
 
     cur.close(); conn.close()
 
