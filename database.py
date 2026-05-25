@@ -2,6 +2,7 @@ import psycopg2
 from datetime import datetime, timedelta
 import pytz
 import openpyxl
+from openpyxl.styles import Font
 import os
 
 TASHKENT = pytz.timezone('Asia/Tashkent')
@@ -802,6 +803,87 @@ def kompaniya_hisobot_kunlik(komp_id):
 
     cur.close(); conn.close()
     fayl = f"hisobot_kunlik_{nomi}_{bugun.strftime('%Y%m%d')}.xlsx"
+    wb.save(fayl)
+    return fayl
+
+def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=False):
+    """Row-based detailed hisobot - har bir kun alohida qator
+    sana_from, sana_to: YYYY-MM-DD format strings
+    komp_id: None if super_admin=True (all companies), else specific company
+    """
+    conn = connect(); cur = conn.cursor()
+    bugun = hozir()
+
+    # Excel workbook yaratish
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Davomat"
+
+    # Title va sana
+    title = "BARCHA KOMPANIYALAR DAVOMATI" if super_admin else "DAVOMAT HISOBOTI"
+    ws['A1'] = title
+    ws['A2'] = f"SANA ORALIG'I: {sana_from} dan {sana_to} gacha"
+
+    # CAPITAL LETTER headers
+    headers = [
+        "TASKILOTI", "SANA", "XODIM ISM", "LAVOZIMI",
+        "KELDI", "KETDI", "ISH SOAT", "KECHIKISH", "HOLAT", "IZOH"
+    ]
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=4, column=col_idx, value=header)
+        cell.font = Font(bold=True)
+
+    # Davomat ma'lumotlarini olish
+    if super_admin:
+        cur.execute('''SELECT k.nomi, d.sana, x.ism, x.lavozim,
+                              d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
+                       FROM davomat d
+                       JOIN xodimlar x ON d.xodim_id=x.id
+                       JOIN kompaniyalar k ON d.kompaniya_id=k.id
+                       WHERE d.sana >= %s AND d.sana <= %s
+                       ORDER BY k.nomi, d.sana, x.ism''',
+                    (sana_from, sana_to))
+    else:
+        cur.execute('''SELECT k.nomi, d.sana, x.ism, x.lavozim,
+                              d.keldi, d.ketdi, d.ish_soat, d.kechikish, d.holat, d.izoh
+                       FROM davomat d
+                       JOIN xodimlar x ON d.xodim_id=x.id
+                       JOIN kompaniyalar k ON d.kompaniya_id=k.id
+                       WHERE d.kompaniya_id=%s AND d.sana >= %s AND d.sana <= %s
+                       ORDER BY d.sana, x.ism''',
+                    (komp_id, sana_from, sana_to))
+
+    davomatlar = cur.fetchall()
+
+    # Data yozish
+    row = 5
+    for komp_nomi, sana, xodim_ism, lavozim, keldi, ketdi, ish_soat, kechikish, holat, izoh in davomatlar:
+        ws.cell(row=row, column=1, value=komp_nomi)
+        ws.cell(row=row, column=2, value=sana)
+        ws.cell(row=row, column=3, value=xodim_ism)
+        ws.cell(row=row, column=4, value=lavozim)
+        ws.cell(row=row, column=5, value=keldi or "—")
+        ws.cell(row=row, column=6, value=ketdi or "—")
+        ws.cell(row=row, column=7, value=soat_format(ish_soat) if ish_soat else "—")
+        ws.cell(row=row, column=8, value=kechikish_format(kechikish) if kechikish else "—")
+        ws.cell(row=row, column=9, value=holat or "—")
+        ws.cell(row=row, column=10, value=izoh or "—")
+        row += 1
+
+    cur.close(); conn.close()
+
+    # Filename
+    if super_admin:
+        fayl = f"hisobot_{sana_from}_{sana_to}.xlsx"
+    else:
+        cur2 = connect().cursor()
+        cur2.execute("SELECT nomi FROM kompaniyalar WHERE id=%s", (komp_id,))
+        komp_data = cur2.fetchone()
+        komp_name = komp_data[0] if komp_data else "hisobot"
+        cur2.close()
+        fayl = f"hisobot_{komp_name}_{sana_from}_{sana_to}.xlsx"
+
     wb.save(fayl)
     return fayl
 

@@ -80,7 +80,10 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     SA_KOMP_DELETE_KOD,
     SA_HISOBOT_SANA, SA_HISOBOT_KUN,
     SA_XODIM_DELETE_KOD, ADM_XODIM_DELETE_KOD,
-) = range(70)
+    # New hisobot states
+    ADM_HISOBOT_FORMAT, ADM_HISOBOT_YIL_OY, ADM_HISOBOT_SANA_1, ADM_HISOBOT_SANA_2,
+    SA_HISOBOT_FORMAT, SA_HISOBOT_YIL_OY, SA_HISOBOT_SANA_1, SA_HISOBOT_SANA_2,
+) = range(78)
 
 # ==================== MENYULAR ====================
 
@@ -346,22 +349,15 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SA_ADM_LIST
 
     elif matn == "📊 Umumiy hisobot":
-        await update.message.reply_text("⏳ Barcha kompaniyalarning hisoboti tayyorlanmoqda...")
-        try:
-            fayl = super_admin_hisobot_kunlik()
-            if fayl:
-                with open(fayl, 'rb') as f:
-                    await update.message.reply_document(f, filename=fayl)
-                os.remove(fayl)
-                await update.message.reply_text(
-                    "✅ Hisobot yuklandi!\n\n"
-                    "Barcha kompaniyalarning kunlik batafsil davomati - shu kunchagacha.",
-                    reply_markup=sa_menu_kb())
-            else:
-                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=sa_menu_kb())
-        except Exception as e:
-            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=sa_menu_kb())
-        return SA_MENU
+        await update.message.reply_text(
+            "📊 Qaysi vaqt oralig'i uchun hisobot?",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📅 Oylik"],
+                ["📆 Yillik"],
+                ["🔍 Custom sana"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return SA_HISOBOT_FORMAT
 
     elif matn == "📸 Barcha rasmlar":
         rasmlar = barcha_komp_bugun_rasmlar()
@@ -1070,22 +1066,15 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADM_DAV_MENU
 
     elif matn == "📊 Hisobot":
-        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
-        try:
-            fayl = kompaniya_hisobot_kunlik(komp_id)
-            if fayl:
-                with open(fayl, 'rb') as f:
-                    await update.message.reply_document(f, filename=fayl)
-                os.remove(fayl)
-                await update.message.reply_text(
-                    "✅ Hisobot yuklandi!\n\n"
-                    "Kunlik batafsil davomat - shu kunchagacha.",
-                    reply_markup=adm_menu_kb())
-            else:
-                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=adm_menu_kb())
-        except Exception as e:
-            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=adm_menu_kb())
-        return ADM_MENU
+        await update.message.reply_text(
+            "📊 Qaysi vaqt oralig'i uchun hisobot?",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📅 Oylik"],
+                ["📆 Yillik"],
+                ["🔍 Custom sana"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return ADM_HISOBOT_FORMAT
 
     elif matn == "📍 GPS sozlash":
         lat, lon, radius = get_gps(komp_id)
@@ -1739,6 +1728,151 @@ async def adm_hisobot_kun_display(update: Update, context: ContextTypes.DEFAULT_
 
     await update.message.reply_text("✅ Hisobot yakunlandi!", reply_markup=adm_menu_kb())
     return ADM_MENU
+
+# ==================== NEW HISOBOT SYSTEM ====================
+
+async def adm_hisobot_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Hisobot formati tanlash"""
+    matn = update.message.text.strip()
+
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    elif matn == "📅 Oylik":
+        context.user_data['hisobot_format'] = 'oylik'
+        await update.message.reply_text(
+            "📅 Oy va yilni kiriting (MM-YYYY)\n\n"
+            "Masalan: 05-2026",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_HISOBOT_YIL_OY
+
+    elif matn == "📆 Yillik":
+        context.user_data['hisobot_format'] = 'yillik'
+        await update.message.reply_text(
+            "📆 Yilni kiriting (YYYY)\n\n"
+            "Masalan: 2026",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_HISOBOT_YIL_OY
+
+    elif matn == "🔍 Custom sana":
+        context.user_data['hisobot_format'] = 'custom'
+        await update.message.reply_text(
+            "📅 Boshlang'ich sanani kiriting (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-01",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_HISOBOT_SANA_1
+
+    return ADM_HISOBOT_FORMAT
+
+async def adm_hisobot_yil_oy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Oy/Yil kiritish"""
+    matn = update.message.text.strip()
+    komp_id = context.user_data.get('komp_id')
+    format_type = context.user_data.get('hisobot_format')
+
+    try:
+        if format_type == 'oylik':
+            parts = matn.split('-')
+            if len(parts) != 2:
+                await update.message.reply_text("❌ Format xato! MM-YYYY formatida kiriting")
+                return ADM_HISOBOT_YIL_OY
+            oy, yil = int(parts[0]), int(parts[1])
+            if oy < 1 or oy > 12:
+                await update.message.reply_text("❌ Oy 01-12 orasida bo'lishi kerak!")
+                return ADM_HISOBOT_YIL_OY
+            # Oyning boshlanishi va tugashi
+            sana_from = f"{yil:04d}-{oy:02d}-01"
+            # Keyingi oyning boshlanishi
+            from datetime import date
+            first_day = date(yil, oy, 1)
+            next_month = first_day.replace(day=28) + timedelta(days=4)
+            last_day = (next_month - timedelta(days=next_month.day)).strftime('%Y-%m-%d')
+            sana_to = last_day
+
+        elif format_type == 'yillik':
+            yil = int(matn)
+            sana_from = f"{yil:04d}-01-01"
+            sana_to = f"{yil:04d}-12-31"
+
+        context.user_data['sana_from'] = sana_from
+        context.user_data['sana_to'] = sana_to
+
+        # Excel yaratish
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        try:
+            fayl = hisobot_row_format(komp_id=komp_id, sana_from=sana_from, sana_to=sana_to, super_admin=False)
+            if fayl and os.path.exists(fayl):
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+                await update.message.reply_text(
+                    f"✅ Hisobot yuklandi!\n\n"
+                    f"Sana: {sana_from} dan {sana_to} gacha",
+                    reply_markup=adm_menu_kb())
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=adm_menu_kb())
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=adm_menu_kb())
+
+        return ADM_MENU
+
+    except ValueError:
+        if format_type == 'oylik':
+            await update.message.reply_text("❌ Format xato! MM-YYYY formatida kiriting")
+            return ADM_HISOBOT_YIL_OY
+        else:
+            await update.message.reply_text("❌ Yil raqam bo'lishi kerak! (YYYY)")
+            return ADM_HISOBOT_YIL_OY
+
+async def adm_hisobot_sana_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Custom sana (boshlang'ich)"""
+    matn = update.message.text.strip()
+    komp_id = context.user_data.get('komp_id')
+
+    try:
+        datetime.strptime(matn, "%Y-%m-%d")
+        context.user_data['sana_from'] = matn
+        await update.message.reply_text(
+            "📅 Tugash sanani kiriting (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-31",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_HISOBOT_SANA_2
+    except ValueError:
+        await update.message.reply_text("❌ Format xato! YYYY-MM-DD formatida kiriting")
+        return ADM_HISOBOT_SANA_1
+
+async def adm_hisobot_sana_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin - Custom sana (tugash)"""
+    matn = update.message.text.strip()
+    komp_id = context.user_data.get('komp_id')
+    sana_from = context.user_data.get('sana_from')
+
+    try:
+        datetime.strptime(matn, "%Y-%m-%d")
+        sana_to = matn
+
+        # Excel yaratish
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        try:
+            fayl = hisobot_row_format(komp_id=komp_id, sana_from=sana_from, sana_to=sana_to, super_admin=False)
+            if fayl and os.path.exists(fayl):
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+                await update.message.reply_text(
+                    f"✅ Hisobot yuklandi!\n\n"
+                    f"Sana: {sana_from} dan {sana_to} gacha",
+                    reply_markup=adm_menu_kb())
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=adm_menu_kb())
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=adm_menu_kb())
+
+        return ADM_MENU
+    except ValueError:
+        await update.message.reply_text("❌ Format xato! YYYY-MM-DD formatida kiriting")
+        return ADM_HISOBOT_SANA_2
 
 # ==================== ADMIN WiFi SETTINGS ====================
 
@@ -2643,6 +2777,148 @@ async def sa_hisobot_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Format xato! (YYYY-MM-DD)")
         return SA_HISOBOT_SANA
 
+# ==================== NEW SUPER ADMIN HISOBOT ====================
+
+async def sa_hisobot_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Hisobot formati tanlash"""
+    matn = update.message.text.strip()
+
+    if matn == "🔙 Orqaga":
+        await update.message.reply_text("Super Admin menu:", reply_markup=sa_menu_kb())
+        return SA_MENU
+
+    elif matn == "📅 Oylik":
+        context.user_data['hisobot_format'] = 'oylik'
+        await update.message.reply_text(
+            "📅 Oy va yilni kiriting (MM-YYYY)\n\n"
+            "Masalan: 05-2026",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_HISOBOT_YIL_OY
+
+    elif matn == "📆 Yillik":
+        context.user_data['hisobot_format'] = 'yillik'
+        await update.message.reply_text(
+            "📆 Yilni kiriting (YYYY)\n\n"
+            "Masalan: 2026",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_HISOBOT_YIL_OY
+
+    elif matn == "🔍 Custom sana":
+        context.user_data['hisobot_format'] = 'custom'
+        await update.message.reply_text(
+            "📅 Boshlang'ich sanani kiriting (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-01",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_HISOBOT_SANA_1
+
+    return SA_HISOBOT_FORMAT
+
+async def sa_hisobot_yil_oy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Oy/Yil kiritish"""
+    matn = update.message.text.strip()
+    format_type = context.user_data.get('hisobot_format')
+
+    try:
+        if format_type == 'oylik':
+            parts = matn.split('-')
+            if len(parts) != 2:
+                await update.message.reply_text("❌ Format xato! MM-YYYY formatida kiriting")
+                return SA_HISOBOT_YIL_OY
+            oy, yil = int(parts[0]), int(parts[1])
+            if oy < 1 or oy > 12:
+                await update.message.reply_text("❌ Oy 01-12 orasida bo'lishi kerak!")
+                return SA_HISOBOT_YIL_OY
+            sana_from = f"{yil:04d}-{oy:02d}-01"
+            from datetime import date
+            first_day = date(yil, oy, 1)
+            next_month = first_day.replace(day=28) + timedelta(days=4)
+            last_day = (next_month - timedelta(days=next_month.day)).strftime('%Y-%m-%d')
+            sana_to = last_day
+
+        elif format_type == 'yillik':
+            yil = int(matn)
+            sana_from = f"{yil:04d}-01-01"
+            sana_to = f"{yil:04d}-12-31"
+
+        context.user_data['sana_from'] = sana_from
+        context.user_data['sana_to'] = sana_to
+
+        # Excel yaratish
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        try:
+            fayl = hisobot_row_format(komp_id=None, sana_from=sana_from, sana_to=sana_to, super_admin=True)
+            if fayl and os.path.exists(fayl):
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+                await update.message.reply_text(
+                    f"✅ Hisobot yuklandi!\n\n"
+                    f"Sana: {sana_from} dan {sana_to} gacha\n"
+                    f"📊 BARCHA KOMPANIYALAR",
+                    reply_markup=sa_menu_kb())
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=sa_menu_kb())
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=sa_menu_kb())
+
+        return SA_MENU
+
+    except ValueError:
+        if format_type == 'oylik':
+            await update.message.reply_text("❌ Format xato! MM-YYYY formatida kiriting")
+            return SA_HISOBOT_YIL_OY
+        else:
+            await update.message.reply_text("❌ Yil raqam bo'lishi kerak! (YYYY)")
+            return SA_HISOBOT_YIL_OY
+
+async def sa_hisobot_sana_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Custom sana (boshlang'ich)"""
+    matn = update.message.text.strip()
+
+    try:
+        datetime.strptime(matn, "%Y-%m-%d")
+        context.user_data['sana_from'] = matn
+        await update.message.reply_text(
+            "📅 Tugash sanani kiriting (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-31",
+            reply_markup=ReplyKeyboardRemove())
+        return SA_HISOBOT_SANA_2
+    except ValueError:
+        await update.message.reply_text("❌ Format xato! YYYY-MM-DD formatida kiriting")
+        return SA_HISOBOT_SANA_1
+
+async def sa_hisobot_sana_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin - Custom sana (tugash)"""
+    matn = update.message.text.strip()
+    sana_from = context.user_data.get('sana_from')
+
+    try:
+        datetime.strptime(matn, "%Y-%m-%d")
+        sana_to = matn
+
+        # Excel yaratish
+        await update.message.reply_text("⏳ Hisobot tayyorlanmoqda...")
+        try:
+            fayl = hisobot_row_format(komp_id=None, sana_from=sana_from, sana_to=sana_to, super_admin=True)
+            if fayl and os.path.exists(fayl):
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+                await update.message.reply_text(
+                    f"✅ Hisobot yuklandi!\n\n"
+                    f"Sana: {sana_from} dan {sana_to} gacha\n"
+                    f"📊 BARCHA KOMPANIYALAR",
+                    reply_markup=sa_menu_kb())
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!", reply_markup=sa_menu_kb())
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}", reply_markup=sa_menu_kb())
+
+        return SA_MENU
+    except ValueError:
+        await update.message.reply_text("❌ Format xato! YYYY-MM-DD formatida kiriting")
+        return SA_HISOBOT_SANA_2
+
 # ==================== LIVE LOKATSIYA UPDATE ====================
 
 async def live_location_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3044,6 +3320,15 @@ def main():
             XOD_KETDI_AUDIO: [MessageHandler(filters.VOICE | filters.AUDIO, xod_reject_audio)],
             XOD_SABAB_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_sabab_sana)],
             XOD_SABAB_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_sabab_matn)],
+            # New hisobot states
+            ADM_HISOBOT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_hisobot_format)],
+            ADM_HISOBOT_YIL_OY: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_hisobot_yil_oy)],
+            ADM_HISOBOT_SANA_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_hisobot_sana_1)],
+            ADM_HISOBOT_SANA_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_hisobot_sana_2)],
+            SA_HISOBOT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_format)],
+            SA_HISOBOT_YIL_OY: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_yil_oy)],
+            SA_HISOBOT_SANA_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana_1)],
+            SA_HISOBOT_SANA_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana_2)],
         },
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
