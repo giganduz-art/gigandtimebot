@@ -778,7 +778,7 @@ def kompaniya_hisobot_kunlik(komp_id):
         # Davomat ma'lumotlarini olish
         cur.execute('''SELECT sana,keldi,ketdi,holat FROM davomat
                       WHERE xodim_id=%s AND sana >= %s AND sana <= %s
-                      ORDER BY sana''', (xodim_id, oy_boshi.date(), bugun.date()))
+                      ORDER BY sana''', (xodim_id, oy_boshi.strftime('%Y-%m-%d'), bugun.strftime('%Y-%m-%d')))
         davomatlar = {d[0]: d for d in cur.fetchall()}
 
         # Har bir kun uchun keldi/ketdi vaqtini yozish
@@ -859,7 +859,7 @@ def super_admin_hisobot_kunlik():
             # Davomat ma'lumotlarini olish
             cur.execute('''SELECT sana,keldi,ketdi FROM davomat
                           WHERE xodim_id=%s AND sana >= %s AND sana <= %s
-                          ORDER BY sana''', (xodim_id, oy_boshi.date(), bugun.date()))
+                          ORDER BY sana''', (xodim_id, oy_boshi.strftime('%Y-%m-%d'), bugun.strftime('%Y-%m-%d')))
             davomatlar = {d[0]: d for d in cur.fetchall()}
 
             # Har bir kun uchun keldi/ketdi
