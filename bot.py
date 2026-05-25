@@ -1061,9 +1061,12 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif matn == "📊 Hisobot":
         await update.message.reply_text(
-            "📅 Qaysi kun uchun hisobot? (YYYY-MM-DD)\n\n"
-            "Masalan: 2026-05-24",
-            reply_markup=ReplyKeyboardRemove())
+            "📊 Hisobotni qaysi formatda yuklab olasiz?",
+            reply_markup=ReplyKeyboardMarkup([
+                ["📥 Excel yuklab ol"],
+                ["🔎 Kun bo'yicha"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True))
         return ADM_HISOBOT_SANA
 
     elif matn == "📍 GPS sozlash":
@@ -1629,15 +1632,43 @@ async def adm_dav_tahrir_q(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== ADMIN DAILY REPORT ====================
 
 async def adm_hisobot_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sana = update.message.text.strip()
+    matn = update.message.text.strip()
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "📥 Excel yuklab ol":
+        await update.message.reply_text("⏳ Excel tayyorlanmoqda...")
+        try:
+            fayl = kompaniya_hisobot(komp_id)
+            if fayl:
+                with open(fayl, 'rb') as f:
+                    await update.message.reply_document(f, filename=fayl)
+                os.remove(fayl)
+            else:
+                await update.message.reply_text("❌ Hisobot tayyorlashda xatolik!")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xatolik: {e}")
+        await update.message.reply_text("Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    elif matn == "🔎 Kun bo'yicha":
+        await update.message.reply_text(
+            "📅 Qaysi kun uchun hisobot? (YYYY-MM-DD)\n\n"
+            "Masalan: 2026-05-24",
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_HISOBOT_KUN
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    # Handle date input for "Kun bo'yicha" option
     try:
-        datetime.strptime(sana, "%Y-%m-%d")
-        context.user_data['hisobot_sana'] = sana
-        komp_id = context.user_data.get('komp_id')
+        datetime.strptime(matn, "%Y-%m-%d")
+        context.user_data['hisobot_sana'] = matn
         conn = connect(); cur = conn.cursor()
         cur.execute('''SELECT x.id,x.ism,x.lavozim,d.keldi,d.ketdi,d.ish_soat,d.kechikish,d.keldi_rasm,d.ketdi_rasm
                       FROM xodimlar x LEFT JOIN davomat d ON x.id=d.xodim_id AND d.sana=%s
-                      WHERE x.kompaniya_id=%s ORDER BY x.ism''', (sana, komp_id))
+                      WHERE x.kompaniya_id=%s ORDER BY x.ism''', (matn, komp_id))
         davomatlar = cur.fetchall(); cur.close(); conn.close()
 
         context.user_data['davomatlar'] = davomatlar
@@ -1645,8 +1676,8 @@ async def adm_hisobot_sana(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await adm_hisobot_kun_display(update, context)
         return ADM_HISOBOT_KUN
     except ValueError:
-        await update.message.reply_text("❌ Format xato! (YYYY-MM-DD)")
-        return ADM_HISOBOT_SANA
+        await update.message.reply_text("❌ Format xato! (YYYY-MM-DD)\n\nMasalan: 2026-05-24")
+        return ADM_HISOBOT_KUN
 
 async def adm_hisobot_kun_display(update: Update, context: ContextTypes.DEFAULT_TYPE):
     davomatlar = context.user_data.get('davomatlar', [])
