@@ -85,7 +85,12 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     # New hisobot states
     ADM_HISOBOT_FORMAT, ADM_HISOBOT_YIL_OY, ADM_HISOBOT_SANA_1, ADM_HISOBOT_SANA_2,
     SA_HISOBOT_FORMAT, SA_HISOBOT_YIL_OY, SA_HISOBOT_SANA_1, SA_HISOBOT_SANA_2,
-) = range(86)
+    # Xabar states
+    SA_XABAR_MENU, SA_XABAR_TASHKILOT, SA_XABAR_RECIPIENT, SA_XABAR_SUBJECT, SA_XABAR_MATN, SA_XABAR_INBOX, SA_XABAR_HISTORY,
+    ADM_XABAR_MENU, ADM_XABAR_RECIPIENT, ADM_XABAR_SUBJECT, ADM_XABAR_MATN, ADM_XABAR_INBOX, ADM_XABAR_HISTORY,
+    HR_XABAR_MENU, HR_XABAR_RECIPIENT, HR_XABAR_SUBJECT, HR_XABAR_MATN, HR_XABAR_INBOX, HR_XABAR_HISTORY,
+    XOD_XABAR_MENU, XOD_XABAR_RECIPIENT, XOD_XABAR_SUBJECT, XOD_XABAR_MATN, XOD_XABAR_INBOX, XOD_XABAR_HISTORY,
+) = range(114)
 
 # ==================== MENYULAR ====================
 
@@ -93,30 +98,32 @@ def sa_menu_kb():
     return ReplyKeyboardMarkup([
         ["🏢 Bizneslar", "👑 Super Adminlar"],
         ["📊 Umumiy hisobot", "📋 Audit Log"],
-        ["📸 Barcha rasmlar", "🔐 Sozlamalar"],
-        ["☰ Menu"]
+        ["📸 Barcha rasmlar", "💬 Xabar"],
+        ["🔐 Sozlamalar", "☰ Menu"]
     ], resize_keyboard=True)
 
 def adm_menu_kb():
     return ReplyKeyboardMarkup([
         ["👥 Xodimlar", "📅 Davomat"],
-        ["📊 Hisobot", "📍 GPS sozlash"],
-        ["📡 WiFi sozlash", "📋 Audit Log"],
-        ["📸 Rasm log", "☰ Menu"]
+        ["📊 Hisobot", "💬 Xabar"],
+        ["📍 GPS sozlash", "📡 WiFi sozlash"],
+        ["📋 Audit Log", "📸 Rasm log", "☰ Menu"]
     ], resize_keyboard=True)
 
 def hr_menu_kb():
     return ReplyKeyboardMarkup([
         ["✅ Keldim", "🚪 Ketdim"],
         ["✍️ Manual davomat", "👁️ Davomatni ko'rish"],
-        ["📊 Hisobot", "☰ Menu"]
+        ["📊 Hisobot", "💬 Xabar"],
+        ["☰ Menu"]
     ], resize_keyboard=True)
 
 def xod_menu_kb():
     return ReplyKeyboardMarkup([
         ["✅ Keldim", "🚪 Ketdim"],
-        ["📋 Davomatim"],
-        ["📝 Sababli so'rov", "☰ Menu"]
+        ["💰 Kirm Xisobim", "💰 Chiqim Xisobim"],
+        ["📄 Xisoobotlarim", "📝 Sababli so'rov"],
+        ["💬 Xabar", "☰ Menu"]
     ], resize_keyboard=True)
 
 def restart_kb():
@@ -3854,6 +3861,11 @@ def main():
             SA_HISOBOT_YIL_OY: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_yil_oy)],
             SA_HISOBOT_SANA_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana_1)],
             SA_HISOBOT_SANA_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana_2)],
+            # Xabar states
+            SA_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xabar_menu)],
+            ADM_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xabar_menu)],
+            HR_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_xabar_menu)],
+            XOD_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_menu)],
         },
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
@@ -3879,6 +3891,75 @@ def main():
     jq.run_daily(haftalik_hisobot_job,
                  time=dtime(hour=18, minute=0, second=0, tzinfo=TASHKENT),
                  days=(4,))  # 4 = Juma
+
+    # ==================== XABAR HANDLERS ====================
+
+    async def sa_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Super Admin xabar menusi"""
+        matn = update.message.text
+        sa_id = update.effective_user.id
+
+        if matn == "💬 Xabar":
+            await update.message.reply_text(
+                "💬 *Xabar yuborish:*\n\n"
+                "Nimalarga xabar yuborasiz?",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([
+                    ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                    ["📊 Xabar tarixhi", "🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return SA_XABAR_MENU
+        return SA_XABAR_MENU
+
+    async def adm_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Admin xabar menusi"""
+        matn = update.message.text
+
+        if matn == "💬 Xabar":
+            await update.message.reply_text(
+                "💬 *Xabar yuborish:*\n\n"
+                "Nimalarga xabar yuborasiz?",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([
+                    ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                    ["📊 Xabar tarixhi", "🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return ADM_XABAR_MENU
+        return ADM_XABAR_MENU
+
+    async def hr_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """HR xabar menusi"""
+        matn = update.message.text
+
+        if matn == "💬 Xabar":
+            await update.message.reply_text(
+                "💬 *Xabar yuborish:*\n\n"
+                "Nimalarga xabar yuborasiz?",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([
+                    ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                    ["📊 Xabar tarixhi", "🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return HR_XABAR_MENU
+        return HR_XABAR_MENU
+
+    async def xod_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Xodim xabar menusi"""
+        matn = update.message.text
+
+        if matn == "💬 Xabar":
+            await update.message.reply_text(
+                "💬 *Xabar yuborish:*\n\n"
+                "Nimalarga xabar yuborasiz?",
+                parse_mode='Markdown',
+                reply_markup=ReplyKeyboardMarkup([
+                    ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                    ["📊 Xabar tarixhi", "🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return XOD_XABAR_MENU
+        return XOD_XABAR_MENU
+
+    # ==================== FLASK & POLLING ====================
 
     # Start Flask in a background thread
     port = os.environ.get("PORT", 8080)

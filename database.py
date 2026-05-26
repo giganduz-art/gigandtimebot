@@ -109,6 +109,36 @@ def create_tables():
         mac_address TEXT NOT NULL, nomi TEXT DEFAULT ''
     )''')
 
+    cur.execute('''CREATE TABLE IF NOT EXISTS xabarlar (
+        id SERIAL PRIMARY KEY,
+        from_user_id BIGINT,
+        from_user_name TEXT,
+        from_role TEXT,
+        from_org_id INTEGER,
+        to_user_id BIGINT,
+        to_user_name TEXT,
+        to_role TEXT,
+        to_org_id INTEGER,
+        subject TEXT,
+        xabar TEXT,
+        rasm_id TEXT,
+        dokument_id TEXT,
+        holat TEXT DEFAULT 'o''qilmadi',
+        yaratilgan TEXT,
+        o_qilgan TEXT,
+        org_id INTEGER NOT NULL
+    )''')
+
+    cur.execute('''CREATE TABLE IF NOT EXISTS xabar_qabul_qiluvchilar (
+        id SERIAL PRIMARY KEY,
+        xabar_id INTEGER REFERENCES xabarlar(id),
+        qabul_qiluvchi_id BIGINT,
+        qabul_qiluvchi_nomi TEXT,
+        qabul_qiluvchi_role TEXT,
+        holat TEXT DEFAULT 'o''qilmadi',
+        o_qilgan TEXT
+    )''')
+
     conn.commit(); cur.close(); conn.close()
 
 # ========== SOZLAMALAR ==========
@@ -1293,3 +1323,100 @@ def xodim_statistika(xodim_id, sana_1, sana_2):
         'late_days': late_days,
         'avg_delay': avg_delay
     }
+
+# ========== XABARLAR ==========
+
+def xabar_yuborish(from_id, from_ism, from_role, from_org_id, to_ids, subject, xabar, org_id, rasm_id=None, doc_id=None):
+    """Xabarni bir yoki ko'p odamlarga yuborish"""
+    try:
+        conn = connect(); cur = conn.cursor()
+        vaqt = hozir().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Asosiy xabar yaratish
+        cur.execute('''INSERT INTO xabarlar(from_user_id,from_user_name,from_role,from_org_id,
+                      subject,xabar,rasm_id,dokument_id,yaratilgan,org_id)
+                      VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                    (from_id, from_ism, from_role, from_org_id, subject, xabar, rasm_id, doc_id, vaqt, org_id))
+
+        xabar_id = cur.fetchone()[0]
+
+        # Qabul qiluvchilarni qo'shish
+        if isinstance(to_ids, list):
+            for to_id, to_ism, to_role, to_org in to_ids:
+                cur.execute('''INSERT INTO xabar_qabul_qiluvchilar(xabar_id,qabul_qiluvchi_id,qabul_qiluvchi_nomi,qabul_qiluvchi_role)
+                              VALUES(%s,%s,%s,%s)''',
+                            (xabar_id, to_id, to_ism, to_role))
+        else:
+            to_id, to_ism, to_role, to_org = to_ids
+            cur.execute('''INSERT INTO xabar_qabul_qiluvchilar(xabar_id,qabul_qiluvchi_id,qabul_qiluvchi_nomi,qabul_qiluvchi_role)
+                          VALUES(%s,%s,%s,%s)''',
+                        (xabar_id, to_id, to_ism, to_role))
+
+        conn.commit(); cur.close(); conn.close()
+        return xabar_id
+    except Exception as e:
+        if 'conn' in locals():
+            conn.rollback(); cur.close(); conn.close()
+        raise Exception(f"Xabar yuborish xatosi: {str(e)}")
+
+def xabar_inbox_olish(user_id, org_id):
+    """Foydalanuvchi uchun kirgan xabarlarni olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT q.id,x.id,x.from_user_name,x.from_role,x.subject,x.xabar,
+                   x.yaratilgan,q.holat
+                   FROM xabar_qabul_qiluvchilar q
+                   JOIN xabarlar x ON q.xabar_id=x.id
+                   WHERE q.qabul_qiluvchi_id=%s AND x.org_id=%s
+                   ORDER BY x.yaratilgan DESC''', (user_id, org_id))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r
+
+def xabar_history_olish(org_id):
+    """Tashkilotning barcha xabar tarixini olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT id,from_user_name,from_role,subject,xabar,yaratilgan FROM xabarlar
+                   WHERE org_id=%s ORDER BY yaratilgan DESC LIMIT 100''', (org_id,))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r
+
+def xabar_o_qish(recipient_id, xabar_id):
+    """Xabarni o'qilgan deb belgilash"""
+    try:
+        conn = connect(); cur = conn.cursor()
+        vaqt = hozir().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute('''UPDATE xabar_qabul_qiluvchilar SET holat=%s, o_qilgan=%s
+                      WHERE qabul_qiluvchi_id=%s AND xabar_id=%s''',
+                    ('o\'qildi', vaqt, recipient_id, xabar_id))
+        conn.commit(); cur.close(); conn.close()
+        return True
+    except Exception as e:
+        if 'conn' in locals():
+            conn.rollback(); cur.close(); conn.close()
+        raise Exception(f"Xabar o'qish xatosi: {str(e)}")
+
+def xabar_search(org_id, keyword):
+    """Xabarlarni qidiruv"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT id,from_user_name,from_role,subject,xabar,yaratilgan
+                   FROM xabarlar
+                   WHERE org_id=%s AND (subject ILIKE %s OR xabar ILIKE %s)
+                   ORDER BY yaratilgan DESC''',
+                (org_id, f"%{keyword}%", f"%{keyword}%"))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r
+
+def xabar_olish(xabar_id):
+    """Bitta xabarni toliq ma'lumot bilan olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT id,from_user_name,from_role,subject,xabar,rasm_id,dokument_id,yaratilgan
+                   FROM xabarlar WHERE id=%s''', (xabar_id,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return r
+
+def xabar_qabul_qiluvchilar(xabar_id):
+    """Xabarning barcha qabul qiluvchilarini olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT qabul_qiluvchi_nomi,qabul_qiluvchi_role,holat,o_qilgan
+                   FROM xabar_qabul_qiluvchilar WHERE xabar_id=%s''', (xabar_id,))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r
