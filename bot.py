@@ -464,6 +464,9 @@ async def sa_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('audit_view', None)
         return SA_MENU
 
+    elif matn == "💬 Xabar":
+        return await sa_xabar_menu(update, context)
+
     elif matn == "🔐 Sozlamalar":
         sa = super_admin_olish(user_id)
         murojaat = get_murojaat_raqam()
@@ -1410,6 +1413,9 @@ async def adm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ["🔙 Orqaga"]
             ], resize_keyboard=True))
         return ADM_HISOBOT_FORMAT
+
+    elif matn == "💬 Xabar":
+        return await adm_xabar_menu(update, context)
 
     elif matn == "📍 GPS sozlash":
         lat, lon, radius = get_gps(komp_id)
@@ -2654,6 +2660,8 @@ async def hr_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"❌ Xatolik: {e}")
         return HR_MENU
+    elif matn == "💬 Xabar":
+        return await hr_xabar_menu(update, context)
     elif matn == "☰ Menu" or matn == "🏠 Bosh menu":
         await update.message.reply_text("Boshidan boshlash uchun:", reply_markup=menu_restart_kb())
         return HR_MENU
@@ -2889,6 +2897,9 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matn == "📝 Sababli so'rov":
         await update.message.reply_text("📅 Qaysi kun? (YYYY-MM-DD):", reply_markup=ReplyKeyboardRemove())
         return XOD_SABAB_SANA
+
+    elif matn == "💬 Xabar":
+        return await xod_xabar_menu(update, context)
 
     elif matn == "📡 WiFi ulangan":
         xodim_id = context.user_data.get('xodim_id')
@@ -3127,6 +3138,660 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Chiqish belgilandi!\n\n{motivatsiya}",
                                      parse_mode='Markdown', reply_markup=xod_menu_kb())
     return XOD_MENU
+
+# ==================== XABAR (MESSAGING) HANDLERS ====================
+
+async def sa_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin messaging menu"""
+    matn = update.message.text
+    sa_id = update.effective_user.id
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "💬 Xabar" or matn == "🔙 Orqaga":
+        await update.message.reply_text(
+            "💬 *Xabar yuborish:*\n\n"
+            "Nimalarga xabar yuborasiz?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                ["📊 Xabar tarixhi", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return SA_XABAR_MENU
+
+    elif matn == "📤 Xabar yuborish":
+        # Get all organizations for Super Admin
+        kompaniyalar = barcha_kompaniyalar()
+        if not kompaniyalar:
+            await update.message.reply_text("❌ Tashkilot yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_XABAR_MENU
+
+        context.user_data['xabar_recipients'] = []
+        context.user_data['xabar_org_list'] = kompaniyalar
+        buttons = [[f"🏢 {komp[1]} (ID: {komp[0]})"] for komp in kompaniyalar[:20]]
+        buttons.append(["🔙 Orqaga"])
+        await update.message.reply_text(
+            "🏢 Tashkilot tanlang:",
+            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+        context.user_data['selecting_org'] = True
+        return SA_XABAR_TASHKILOT
+
+    elif matn == "📥 Kirgan xabarlar":
+        inbox = xabar_inbox_olish(sa_id, 0)  # org_id=0 for Super Admin system messages
+        if not inbox:
+            await update.message.reply_text(
+                "📥 Kirgan xabarlar yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_XABAR_MENU
+
+        xabar = "📥 *Kirgan xabarlar:*\n\n"
+        for idx, (q_id, x_id, from_user, from_role, subject, body, created, holat) in enumerate(inbox[:10], 1):
+            status = "✅" if holat == "o'qildi" else "🆕"
+            xabar += f"{status} {idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_XABAR_MENU
+
+    elif matn == "📊 Xabar tarixhi":
+        history = xabar_history_olish(0)  # org_id=0 for Super Admin
+        if not history:
+            await update.message.reply_text(
+                "📊 Xabar tarixhi yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return SA_XABAR_MENU
+
+        xabar = "📊 *Xabar tarixhi (Oxirgi 20):*\n\n"
+        for idx, (x_id, from_user, from_role, subject, body, created) in enumerate(history[:20], 1):
+            xabar += f"{idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return SA_XABAR_MENU
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("👑 Super Admin menu:", reply_markup=sa_menu_kb())
+        return SA_MENU
+
+    return SA_XABAR_MENU
+
+async def adm_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin messaging menu"""
+    matn = update.message.text
+    admin_id = update.effective_user.id
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "💬 Xabar" or matn == "🔙 Orqaga":
+        await update.message.reply_text(
+            "💬 *Xabar yuborish:*\n\n"
+            "Nimalarga xabar yuborasiz?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                ["📊 Xabar tarixhi", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return ADM_XABAR_MENU
+
+    elif matn == "📤 Xabar yuborish":
+        # Get all employees in this organization
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XABAR_MENU
+
+        context.user_data['xabar_recipients'] = []
+        buttons = []
+        for xod in xodimlar[:30]:
+            buttons.append([f"👤 {xod[1]} (ID: {xod[0]})"])
+        buttons.append(["🔙 Orqaga"])
+
+        await update.message.reply_text(
+            "👤 Qabul qiluvchi tanlang:\n\n(Bitta yoki ko'p tanlashingiz mumkin)",
+            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+        context.user_data['xabar_xodim_list'] = xodimlar
+        context.user_data['selecting_recipient'] = True
+        return ADM_XABAR_RECIPIENT
+
+    elif matn == "📥 Kirgan xabarlar":
+        inbox = xabar_inbox_olish(admin_id, komp_id)
+        if not inbox:
+            await update.message.reply_text(
+                "📥 Kirgan xabarlar yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XABAR_MENU
+
+        xabar = "📥 *Kirgan xabarlar:*\n\n"
+        for idx, (q_id, x_id, from_user, from_role, subject, body, created, holat) in enumerate(inbox[:10], 1):
+            status = "✅" if holat == "o'qildi" else "🆕"
+            xabar += f"{status} {idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return ADM_XABAR_MENU
+
+    elif matn == "📊 Xabar tarixhi":
+        history = xabar_history_olish(komp_id)
+        if not history:
+            await update.message.reply_text(
+                "📊 Xabar tarixhi yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XABAR_MENU
+
+        xabar = "📊 *Xabar tarixhi (Oxirgi 20):*\n\n"
+        for idx, (x_id, from_user, from_role, subject, body, created) in enumerate(history[:20], 1):
+            xabar += f"{idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return ADM_XABAR_MENU
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("📋 Admin menu:", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+    return ADM_XABAR_MENU
+
+async def hr_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """HR messaging menu"""
+    matn = update.message.text
+    hr_id = update.effective_user.id
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "💬 Xabar" or matn == "🔙 Orqaga":
+        await update.message.reply_text(
+            "💬 *Xabar yuborish:*\n\n"
+            "Nimalarga xabar yuborasiz?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                ["📊 Xabar tarixhi", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return HR_XABAR_MENU
+
+    elif matn == "📤 Xabar yuborish":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return HR_XABAR_MENU
+
+        context.user_data['xabar_recipients'] = []
+        buttons = []
+        for xod in xodimlar[:30]:
+            buttons.append([f"👤 {xod[1]} (ID: {xod[0]})"])
+        buttons.append(["🔙 Orqaga"])
+
+        await update.message.reply_text(
+            "👤 Qabul qiluvchi tanlang:",
+            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+        context.user_data['xabar_xodim_list'] = xodimlar
+        context.user_data['selecting_recipient'] = True
+        return HR_XABAR_RECIPIENT
+
+    elif matn == "📥 Kirgan xabarlar":
+        inbox = xabar_inbox_olish(hr_id, komp_id)
+        if not inbox:
+            await update.message.reply_text(
+                "📥 Kirgan xabarlar yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return HR_XABAR_MENU
+
+        xabar = "📥 *Kirgan xabarlar:*\n\n"
+        for idx, (q_id, x_id, from_user, from_role, subject, body, created, holat) in enumerate(inbox[:10], 1):
+            status = "✅" if holat == "o'qildi" else "🆕"
+            xabar += f"{status} {idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return HR_XABAR_MENU
+
+    elif matn == "📊 Xabar tarixhi":
+        history = xabar_history_olish(komp_id)
+        if not history:
+            await update.message.reply_text(
+                "📊 Xabar tarixhi yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return HR_XABAR_MENU
+
+        xabar = "📊 *Xabar tarixhi (Oxirgi 20):*\n\n"
+        for idx, (x_id, from_user, from_role, subject, body, created) in enumerate(history[:20], 1):
+            xabar += f"{idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return HR_XABAR_MENU
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("📋 HR menu:", reply_markup=hr_menu_kb())
+        return HR_MENU
+
+    return HR_XABAR_MENU
+
+async def xod_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Employee messaging menu"""
+    matn = update.message.text
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "💬 Xabar" or matn == "🔙 Orqaga":
+        await update.message.reply_text(
+            "💬 *Xabar yuborish:*\n\n"
+            "Nimalarga xabar yuborasiz?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
+                ["📊 Xabar tarixhi", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return XOD_XABAR_MENU
+
+    elif matn == "📤 Xabar yuborish":
+        # Employees can send to Admin and HR only
+        komp = kompaniya_olish(komp_id)
+        hr_list = hr_idlari(komp_id)
+
+        recipients = []
+        buttons = []
+
+        # Add Admin
+        if komp and komp[3]:  # admin_id
+            recipients.append((komp[3], komp[1], 'Admin', komp_id))
+            buttons.append([f"👤 Admin ({komp[1]})"])
+
+        # Add HR members
+        xodimlar = kompaniya_xodimlari(komp_id)
+        for xod in xodimlar:
+            if xod[7] == 'hr':  # rol
+                recipients.append((xod[0], xod[1], 'HR', komp_id))
+                buttons.append([f"👤 {xod[1]} (HR)"])
+
+        buttons.append(["🔙 Orqaga"])
+
+        if not recipients:
+            await update.message.reply_text("❌ Qabul qiluvchi yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return XOD_XABAR_MENU
+
+        context.user_data['xabar_recipients'] = recipients
+        await update.message.reply_text(
+            "👤 Qabul qiluvchi tanlang:",
+            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+        context.user_data['selecting_recipient'] = True
+        return XOD_XABAR_RECIPIENT
+
+    elif matn == "📥 Kirgan xabarlar":
+        inbox = xabar_inbox_olish(xodim_id, komp_id)
+        if not inbox:
+            await update.message.reply_text(
+                "📥 Kirgan xabarlar yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return XOD_XABAR_MENU
+
+        xabar = "📥 *Kirgan xabarlar:*\n\n"
+        for idx, (q_id, x_id, from_user, from_role, subject, body, created, holat) in enumerate(inbox[:10], 1):
+            status = "✅" if holat == "o'qildi" else "🆕"
+            xabar += f"{status} {idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return XOD_XABAR_MENU
+
+    elif matn == "📊 Xabar tarixhi":
+        history = xabar_history_olish(komp_id)
+        if not history:
+            await update.message.reply_text(
+                "📊 Xabar tarixhi yo'q!",
+                reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return XOD_XABAR_MENU
+
+        xabar = "📊 *Xabar tarixhi (Oxirgi 20):*\n\n"
+        for idx, (x_id, from_user, from_role, subject, body, created) in enumerate(history[:20], 1):
+            xabar += f"{idx}. {subject}\n"
+            xabar += f"   👤 {from_user} ({from_role})\n"
+            xabar += f"   ⏰ {created}\n\n"
+
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+        return XOD_XABAR_MENU
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    return XOD_XABAR_MENU
+
+# ==================== XABAR RECIPIENT HANDLERS ====================
+
+async def sa_xabar_tashkilot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin organization selection for messaging"""
+    matn = update.message.text
+    if "🏢" not in matn:
+        await update.message.reply_text("❌ Tashkilot tanlang!")
+        return SA_XABAR_TASHKILOT
+
+    komp_id = int(matn.split("ID: ")[1].rstrip(")"))
+    context.user_data['xabar_komp_id'] = komp_id
+
+    # Now get recipients (can be anyone in the org)
+    xodimlar = kompaniya_xodimlari(komp_id)
+    buttons = []
+    for xod in xodimlar[:50]:
+        buttons.append([f"👤 {xod[1]} ({xod[7]}) - ID:{xod[0]}"])
+    buttons.append(["🔙 Orqaga"])
+
+    await update.message.reply_text("👤 Qabul qiluvchi(lar)ni tanlang:", reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+    context.user_data['xabar_recipients_list'] = [(x[0], x[1], x[7], komp_id) for x in xodimlar]
+    return SA_XABAR_RECIPIENT
+
+async def sa_xabar_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin recipient selection"""
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        return await sa_xabar_menu(update, context)
+
+    if "👤" not in matn:
+        await update.message.reply_text("❌ Qabul qiluvchi tanlang!")
+        return SA_XABAR_RECIPIENT
+
+    xodim_id = int(matn.split("ID:")[1].rstrip(")"))
+    recipients_list = context.user_data.get('xabar_recipients_list', [])
+    recipient = next((r for r in recipients_list if r[0] == xodim_id), None)
+
+    if not recipient:
+        await update.message.reply_text("❌ Qabul qiluvchi topilmadi!")
+        return SA_XABAR_RECIPIENT
+
+    context.user_data['xabar_to_id'] = xodim_id
+    context.user_data['xabar_to_name'] = recipient[1]
+    context.user_data['xabar_to_role'] = recipient[2]
+
+    await update.message.reply_text("📌 Xabar mavzusini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return SA_XABAR_SUBJECT
+
+async def sa_xabar_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin message subject"""
+    subject = update.message.text.strip()
+    if not subject or len(subject) > 100:
+        await update.message.reply_text("❌ Mavzu 1-100 belgidan iborat bo'lsin!")
+        return SA_XABAR_SUBJECT
+
+    context.user_data['xabar_subject'] = subject
+    await update.message.reply_text("📝 Xabar matnini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return SA_XABAR_MATN
+
+async def sa_xabar_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Super Admin send message"""
+    xabar_text = update.message.text.strip()
+    if not xabar_text:
+        await update.message.reply_text("❌ Xabar matni bo'sh bo'lmasin!")
+        return SA_XABAR_MATN
+
+    try:
+        sa_id = update.effective_user.id
+        komp_id = context.user_data.get('xabar_komp_id', 0)
+        to_id = context.user_data.get('xabar_to_id')
+        to_name = context.user_data.get('xabar_to_name')
+        to_role = context.user_data.get('xabar_to_role')
+        subject = context.user_data.get('xabar_subject')
+
+        sa_info = super_admin_olish(sa_id)
+        sa_name = sa_info[2] if sa_info else "Super Admin"
+
+        xabar_yuborish(
+            sa_id, sa_name, 'super_admin', 0,
+            [(to_id, to_name, to_role, komp_id)],
+            subject, xabar_text, komp_id
+        )
+
+        await update.message.reply_text(
+            f"✅ Xabar yuborildi!\n\n"
+            f"📌 {subject}\n"
+            f"👤 {to_name} ({to_role})",
+            reply_markup=sa_menu_kb())
+
+        # Clear context
+        for key in ['xabar_komp_id', 'xabar_to_id', 'xabar_to_name', 'xabar_to_role', 'xabar_subject', 'xabar_recipients_list']:
+            context.user_data.pop(key, None)
+
+        return SA_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=sa_menu_kb())
+        return SA_MENU
+
+# ADM handlers
+async def adm_xabar_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin recipient selection"""
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        return await adm_xabar_menu(update, context)
+
+    if "👤" not in matn:
+        await update.message.reply_text("❌ Qabul qiluvchi tanlang!")
+        return ADM_XABAR_RECIPIENT
+
+    xodim_id = int(matn.split("ID:")[1].rstrip(")"))
+    context.user_data['xabar_to_id'] = xodim_id
+    context.user_data['xabar_to_name'] = matn.split(" (")[0].replace("👤 ", "")
+    context.user_data['xabar_to_role'] = 'xodim'
+
+    await update.message.reply_text("📌 Xabar mavzusini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return ADM_XABAR_SUBJECT
+
+async def adm_xabar_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin message subject"""
+    subject = update.message.text.strip()
+    if not subject or len(subject) > 100:
+        await update.message.reply_text("❌ Mavzu 1-100 belgidan iborat bo'lsin!")
+        return ADM_XABAR_SUBJECT
+
+    context.user_data['xabar_subject'] = subject
+    await update.message.reply_text("📝 Xabar matnini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return ADM_XABAR_MATN
+
+async def adm_xabar_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin send message"""
+    xabar_text = update.message.text.strip()
+    if not xabar_text:
+        await update.message.reply_text("❌ Xabar matni bo'sh bo'lmasin!")
+        return ADM_XABAR_MATN
+
+    try:
+        admin_id = update.effective_user.id
+        komp_id = context.user_data.get('komp_id')
+        to_id = context.user_data.get('xabar_to_id')
+        to_name = context.user_data.get('xabar_to_name')
+        to_role = context.user_data.get('xabar_to_role')
+        subject = context.user_data.get('xabar_subject')
+
+        komp = kompaniya_olish(komp_id)
+        admin_name = komp[1] + " (Admin)" if komp else "Admin"
+
+        xabar_yuborish(
+            admin_id, admin_name, 'admin', komp_id,
+            [(to_id, to_name, to_role, komp_id)],
+            subject, xabar_text, komp_id
+        )
+
+        await update.message.reply_text(
+            f"✅ Xabar yuborildi!\n\n"
+            f"📌 {subject}\n"
+            f"👤 {to_name}",
+            reply_markup=adm_menu_kb())
+
+        for key in ['xabar_to_id', 'xabar_to_name', 'xabar_to_role', 'xabar_subject']:
+            context.user_data.pop(key, None)
+
+        return ADM_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=adm_menu_kb())
+        return ADM_MENU
+
+# HR handlers
+async def hr_xabar_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """HR recipient selection"""
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        return await hr_xabar_menu(update, context)
+
+    if "👤" not in matn:
+        await update.message.reply_text("❌ Qabul qiluvchi tanlang!")
+        return HR_XABAR_RECIPIENT
+
+    xodim_id = int(matn.split("ID:")[1].rstrip(")"))
+    context.user_data['xabar_to_id'] = xodim_id
+    context.user_data['xabar_to_name'] = matn.split(" (")[0].replace("👤 ", "")
+    context.user_data['xabar_to_role'] = 'xodim'
+
+    await update.message.reply_text("📌 Xabar mavzusini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return HR_XABAR_SUBJECT
+
+async def hr_xabar_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """HR message subject"""
+    subject = update.message.text.strip()
+    if not subject or len(subject) > 100:
+        await update.message.reply_text("❌ Mavzu 1-100 belgidan iborat bo'lsin!")
+        return HR_XABAR_SUBJECT
+
+    context.user_data['xabar_subject'] = subject
+    await update.message.reply_text("📝 Xabar matnini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return HR_XABAR_MATN
+
+async def hr_xabar_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """HR send message"""
+    xabar_text = update.message.text.strip()
+    if not xabar_text:
+        await update.message.reply_text("❌ Xabar matni bo'sh bo'lmasin!")
+        return HR_XABAR_MATN
+
+    try:
+        hr_id = update.effective_user.id
+        komp_id = context.user_data.get('komp_id')
+        to_id = context.user_data.get('xabar_to_id')
+        to_name = context.user_data.get('xabar_to_name')
+        to_role = context.user_data.get('xabar_to_role')
+        subject = context.user_data.get('xabar_subject')
+
+        xodim = xodim_olish(hr_id)
+        hr_name = xodim[1] if xodim else "HR"
+
+        xabar_yuborish(
+            hr_id, hr_name, 'hr', komp_id,
+            [(to_id, to_name, to_role, komp_id)],
+            subject, xabar_text, komp_id
+        )
+
+        await update.message.reply_text(
+            f"✅ Xabar yuborildi!\n\n"
+            f"📌 {subject}\n"
+            f"👤 {to_name}",
+            reply_markup=hr_menu_kb())
+
+        for key in ['xabar_to_id', 'xabar_to_name', 'xabar_to_role', 'xabar_subject']:
+            context.user_data.pop(key, None)
+
+        return HR_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=hr_menu_kb())
+        return HR_MENU
+
+# XOD (Employee) handlers
+async def xod_xabar_recipient(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Employee recipient selection"""
+    matn = update.message.text
+    if matn == "🔙 Orqaga":
+        return await xod_xabar_menu(update, context)
+
+    if "👤" not in matn:
+        await update.message.reply_text("❌ Qabul qiluvchi tanlang!")
+        return XOD_XABAR_RECIPIENT
+
+    context.user_data['xabar_to_name'] = matn.split(" (")[0].replace("👤 ", "")
+    context.user_data['xabar_to_role'] = 'Admin' if 'Admin' in matn else 'HR'
+
+    # Get the recipient ID from the recipients list
+    recipients = context.user_data.get('xabar_recipients', [])
+    for r in recipients:
+        if r[1] == context.user_data['xabar_to_name'] and r[2] == context.user_data['xabar_to_role']:
+            context.user_data['xabar_to_id'] = r[0]
+            break
+
+    await update.message.reply_text("📌 Xabar mavzusini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return XOD_XABAR_SUBJECT
+
+async def xod_xabar_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Employee message subject"""
+    subject = update.message.text.strip()
+    if not subject or len(subject) > 100:
+        await update.message.reply_text("❌ Mavzu 1-100 belgidan iborat bo'lsin!")
+        return XOD_XABAR_SUBJECT
+
+    context.user_data['xabar_subject'] = subject
+    await update.message.reply_text("📝 Xabar matnini kiriting:", reply_markup=ReplyKeyboardRemove())
+    return XOD_XABAR_MATN
+
+async def xod_xabar_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Employee send message"""
+    xabar_text = update.message.text.strip()
+    if not xabar_text:
+        await update.message.reply_text("❌ Xabar matni bo'sh bo'lmasin!")
+        return XOD_XABAR_MATN
+
+    try:
+        xodim_id = context.user_data.get('xodim_id')
+        komp_id = context.user_data.get('komp_id')
+        to_id = context.user_data.get('xabar_to_id')
+        to_name = context.user_data.get('xabar_to_name')
+        to_role = context.user_data.get('xabar_to_role')
+        subject = context.user_data.get('xabar_subject')
+
+        xodim = xodim_olish(xodim_id)
+        xodim_name = xodim[1] if xodim else "Xodim"
+
+        xabar_yuborish(
+            xodim_id, xodim_name, 'xodim', komp_id,
+            [(to_id, to_name, to_role, komp_id)],
+            subject, xabar_text, komp_id
+        )
+
+        await update.message.reply_text(
+            f"✅ Xabar yuborildi!\n\n"
+            f"📌 {subject}\n"
+            f"👤 {to_name} ({to_role})",
+            reply_markup=xod_menu_kb())
+
+        for key in ['xabar_to_id', 'xabar_to_name', 'xabar_to_role', 'xabar_subject', 'xabar_recipients']:
+            context.user_data.pop(key, None)
+
+        return XOD_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=xod_menu_kb())
+        return XOD_MENU
 
 async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=None, foto=True):
     xodim = xodim_olish(xodim_id)
@@ -3863,9 +4528,22 @@ def main():
             SA_HISOBOT_SANA_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_hisobot_sana_2)],
             # Xabar states
             SA_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xabar_menu)],
+            SA_XABAR_TASHKILOT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xabar_tashkilot)],
+            SA_XABAR_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xabar_recipient)],
+            SA_XABAR_SUBJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xabar_subject)],
+            SA_XABAR_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, sa_xabar_matn)],
             ADM_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xabar_menu)],
+            ADM_XABAR_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xabar_recipient)],
+            ADM_XABAR_SUBJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xabar_subject)],
+            ADM_XABAR_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, adm_xabar_matn)],
             HR_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_xabar_menu)],
+            HR_XABAR_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_xabar_recipient)],
+            HR_XABAR_SUBJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_xabar_subject)],
+            HR_XABAR_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_xabar_matn)],
             XOD_XABAR_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_menu)],
+            XOD_XABAR_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_recipient)],
+            XOD_XABAR_SUBJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_subject)],
+            XOD_XABAR_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_matn)],
         },
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
