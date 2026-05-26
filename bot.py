@@ -3246,12 +3246,80 @@ async def adm_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Nimalarga xabar yuborasiz?",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
-                ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
-                ["📊 Xabar tarixhi", "🔙 Orqaga"]
+                ["📤 Hammaga", "📤 Bolim tanlash"],
+                ["📤 Biror kishiga", "📥 Kirgan xabarlar"],
+                ["📊 Tarixhi", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return ADM_XABAR_MENU
 
-    elif matn == "📤 Xabar yuborish":
+    elif matn == "📤 Hammaga":
+        # Send to ALL employees
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XABAR_MENU
+
+        # Store all recipients
+        context.user_data['xabar_recipients'] = [(x[0], x[1], x[7], komp_id) for x in xodimlar]
+        context.user_data['xabar_send_all'] = True
+
+        await update.message.reply_text(
+            f"📤 *Hammaga xabar yuborish*\n\n"
+            f"Jami xodim: {len(xodimlar)} ta\n\n"
+            f"Mavzu kiriting:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_XABAR_SUBJECT
+
+    elif matn == "📤 Bolim tanlash":
+        # Get unique departments
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XABAR_MENU
+
+        # Get unique departments (lavozim)
+        departments = {}
+        for xod in xodimlar:
+            dept = xod[2]  # lavozim
+            if dept not in departments:
+                departments[dept] = []
+            departments[dept].append(xod)
+
+        buttons = []
+        for dept in departments.keys():
+            count = len(departments[dept])
+            buttons.append([f"💼 {dept} ({count})"])
+        buttons.append(["🔙 Orqaga"])
+
+        context.user_data['xabar_departments'] = departments
+        await update.message.reply_text(
+            "💼 Bolim tanlang:",
+            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+        return ADM_XABAR_MENU
+
+    elif matn.startswith("💼 ") and "(" in matn:
+        # Department selected
+        dept_name = matn.split(" (")[0].replace("💼 ", "")
+        departments = context.user_data.get('xabar_departments', {})
+
+        if dept_name not in departments:
+            await update.message.reply_text("❌ Bolim topilmadi!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return ADM_XABAR_MENU
+
+        xodimlar = departments[dept_name]
+        context.user_data['xabar_recipients'] = [(x[0], x[1], x[7], komp_id) for x in xodimlar]
+        context.user_data['xabar_send_all'] = False
+
+        await update.message.reply_text(
+            f"💼 *{dept_name} bolimiga xabar*\n\n"
+            f"Jami: {len(xodimlar)} ta xodim\n\n"
+            f"Mavzu kiriting:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove())
+        return ADM_XABAR_SUBJECT
+
+    elif matn == "📤 Biror kishiga":
         # Get all employees in this organization
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
@@ -3330,12 +3398,75 @@ async def hr_xabar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Nimalarga xabar yuborasiz?",
             parse_mode='Markdown',
             reply_markup=ReplyKeyboardMarkup([
-                ["📤 Xabar yuborish", "📥 Kirgan xabarlar"],
-                ["📊 Xabar tarixhi", "🔙 Orqaga"]
+                ["📤 Hammaga", "📤 Bolim tanlash"],
+                ["📤 Biror kishiga", "📥 Kirgan xabarlar"],
+                ["📊 Tarixhi", "🔙 Orqaga"]
             ], resize_keyboard=True))
         return HR_XABAR_MENU
 
-    elif matn == "📤 Xabar yuborish":
+    elif matn == "📤 Hammaga":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return HR_XABAR_MENU
+
+        context.user_data['xabar_recipients'] = [(x[0], x[1], x[7], komp_id) for x in xodimlar]
+        context.user_data['xabar_send_all'] = True
+
+        await update.message.reply_text(
+            f"📤 *Hammaga xabar yuborish*\n\n"
+            f"Jami xodim: {len(xodimlar)} ta\n\n"
+            f"Mavzu kiriting:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove())
+        return HR_XABAR_SUBJECT
+
+    elif matn == "📤 Bolim tanlash":
+        xodimlar = kompaniya_xodimlari(komp_id)
+        if not xodimlar:
+            await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return HR_XABAR_MENU
+
+        departments = {}
+        for xod in xodimlar:
+            dept = xod[2]
+            if dept not in departments:
+                departments[dept] = []
+            departments[dept].append(xod)
+
+        buttons = []
+        for dept in departments.keys():
+            count = len(departments[dept])
+            buttons.append([f"💼 {dept} ({count})"])
+        buttons.append(["🔙 Orqaga"])
+
+        context.user_data['xabar_departments'] = departments
+        await update.message.reply_text(
+            "💼 Bolim tanlang:",
+            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+        return HR_XABAR_MENU
+
+    elif matn.startswith("💼 ") and "(" in matn:
+        dept_name = matn.split(" (")[0].replace("💼 ", "")
+        departments = context.user_data.get('xabar_departments', {})
+
+        if dept_name not in departments:
+            await update.message.reply_text("❌ Bolim topilmadi!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
+            return HR_XABAR_MENU
+
+        xodimlar = departments[dept_name]
+        context.user_data['xabar_recipients'] = [(x[0], x[1], x[7], komp_id) for x in xodimlar]
+        context.user_data['xabar_send_all'] = False
+
+        await update.message.reply_text(
+            f"💼 *{dept_name} bolimiga xabar*\n\n"
+            f"Jami: {len(xodimlar)} ta xodim\n\n"
+            f"Mavzu kiriting:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardRemove())
+        return HR_XABAR_SUBJECT
+
+    elif matn == "📤 Biror kishiga":
         xodimlar = kompaniya_xodimlari(komp_id)
         if not xodimlar:
             await update.message.reply_text("❌ Xodim yo'q!", reply_markup=ReplyKeyboardMarkup([["🔙 Orqaga"]], resize_keyboard=True))
