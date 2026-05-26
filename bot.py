@@ -93,7 +93,7 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     # Kirm/Chiqim states
     XOD_KIRM_MENU, XOD_KIRM_TURI, XOD_KIRM_SUMMA, XOD_KIRM_IZOH,
     XOD_CHIQIM_MENU, XOD_CHIQIM_TURI, XOD_CHIQIM_SUMMA, XOD_CHIQIM_IZOH,
-) = range(122)
+) = range(119)
 
 # ==================== MENYULAR ====================
 
