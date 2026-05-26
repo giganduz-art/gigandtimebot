@@ -139,6 +139,38 @@ def create_tables():
         o_qilgan TEXT
     )''')
 
+    # ========== KIRM (INCOME) ==========
+    cur.execute('''CREATE TABLE IF NOT EXISTS kirm (
+        id SERIAL PRIMARY KEY,
+        xodim_id INTEGER NOT NULL,
+        komp_id INTEGER NOT NULL,
+        turi TEXT NOT NULL,
+        summa DECIMAL(12,2) NOT NULL,
+        izoh TEXT,
+        sana TEXT NOT NULL,
+        vaqt TEXT NOT NULL,
+        yaratilgan TEXT,
+        UPDATE_BY_ROLE TEXT,
+        UPDATE_BY_NAME TEXT,
+        holat TEXT DEFAULT 'qabul_qilindi'
+    )''')
+
+    # ========== CHIQIM (EXPENSE/PENALTY) ==========
+    cur.execute('''CREATE TABLE IF NOT EXISTS chiqim (
+        id SERIAL PRIMARY KEY,
+        xodim_id INTEGER NOT NULL,
+        komp_id INTEGER NOT NULL,
+        turi TEXT NOT NULL,
+        summa DECIMAL(12,2) NOT NULL,
+        izoh TEXT,
+        sana TEXT NOT NULL,
+        vaqt TEXT NOT NULL,
+        yaratilgan TEXT,
+        UPDATE_BY_ROLE TEXT,
+        UPDATE_BY_NAME TEXT,
+        holat TEXT DEFAULT 'qabul_qilindi'
+    )''')
+
     conn.commit(); cur.close(); conn.close()
 
 # ========== SOZLAMALAR ==========
@@ -1420,3 +1452,99 @@ def xabar_qabul_qiluvchilar(xabar_id):
                    FROM xabar_qabul_qiluvchilar WHERE xabar_id=%s''', (xabar_id,))
     r = cur.fetchall(); cur.close(); conn.close()
     return r
+
+# ========== KIRM (INCOME) ==========
+
+def kirm_qoshish(xodim_id, komp_id, turi, summa, izoh, sana, vaqt, created_by_role, created_by_name):
+    """Xodimga kirm qo'shish"""
+    try:
+        conn = connect(); cur = conn.cursor()
+        yaratilgan = hozir().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute('''INSERT INTO kirm(xodim_id,komp_id,turi,summa,izoh,sana,vaqt,yaratilgan,UPDATE_BY_ROLE,UPDATE_BY_NAME)
+                      VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                    (xodim_id, komp_id, turi, summa, izoh, sana, vaqt, yaratilgan, created_by_role, created_by_name))
+        kirm_id = cur.fetchone()[0]
+        conn.commit(); cur.close(); conn.close()
+        return kirm_id
+    except Exception as e:
+        if 'conn' in locals():
+            conn.rollback(); cur.close(); conn.close()
+        raise Exception(f"Kirm qo'shish xatosi: {str(e)}")
+
+def kirm_olish(xodim_id, komp_id, sana_from=None, sana_to=None):
+    """Xodimning kirm yozuvlarini olish"""
+    conn = connect(); cur = conn.cursor()
+    if sana_from and sana_to:
+        cur.execute('''SELECT id,turi,summa,izoh,sana,vaqt,yaratilgan,UPDATE_BY_NAME
+                      FROM kirm WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s
+                      ORDER BY sana DESC''',
+                    (xodim_id, komp_id, sana_from, sana_to))
+    else:
+        cur.execute('''SELECT id,turi,summa,izoh,sana,vaqt,yaratilgan,UPDATE_BY_NAME
+                      FROM kirm WHERE xodim_id=%s AND komp_id=%s
+                      ORDER BY sana DESC LIMIT 30''',
+                    (xodim_id, komp_id))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r
+
+def kirm_jami(xodim_id, komp_id, sana_from=None, sana_to=None):
+    """Xodimning umumiy kirm summasini hisoblash"""
+    conn = connect(); cur = conn.cursor()
+    if sana_from and sana_to:
+        cur.execute('''SELECT SUM(summa) FROM kirm
+                      WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s''',
+                    (xodim_id, komp_id, sana_from, sana_to))
+    else:
+        cur.execute('''SELECT SUM(summa) FROM kirm
+                      WHERE xodim_id=%s AND komp_id=%s''',
+                    (xodim_id, komp_id))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return float(r[0]) if r and r[0] else 0.0
+
+# ========== CHIQIM (EXPENSE/PENALTY) ==========
+
+def chiqim_qoshish(xodim_id, komp_id, turi, summa, izoh, sana, vaqt, created_by_role, created_by_name):
+    """Xodimga chiqim qo'shish"""
+    try:
+        conn = connect(); cur = conn.cursor()
+        yaratilgan = hozir().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute('''INSERT INTO chiqim(xodim_id,komp_id,turi,summa,izoh,sana,vaqt,yaratilgan,UPDATE_BY_ROLE,UPDATE_BY_NAME)
+                      VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                    (xodim_id, komp_id, turi, summa, izoh, sana, vaqt, yaratilgan, created_by_role, created_by_name))
+        chiqim_id = cur.fetchone()[0]
+        conn.commit(); cur.close(); conn.close()
+        return chiqim_id
+    except Exception as e:
+        if 'conn' in locals():
+            conn.rollback(); cur.close(); conn.close()
+        raise Exception(f"Chiqim qo'shish xatosi: {str(e)}")
+
+def chiqim_olish(xodim_id, komp_id, sana_from=None, sana_to=None):
+    """Xodimning chiqim yozuvlarini olish"""
+    conn = connect(); cur = conn.cursor()
+    if sana_from and sana_to:
+        cur.execute('''SELECT id,turi,summa,izoh,sana,vaqt,yaratilgan,UPDATE_BY_NAME
+                      FROM chiqim WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s
+                      ORDER BY sana DESC''',
+                    (xodim_id, komp_id, sana_from, sana_to))
+    else:
+        cur.execute('''SELECT id,turi,summa,izoh,sana,vaqt,yaratilgan,UPDATE_BY_NAME
+                      FROM chiqim WHERE xodim_id=%s AND komp_id=%s
+                      ORDER BY sana DESC LIMIT 30''',
+                    (xodim_id, komp_id))
+    r = cur.fetchall(); cur.close(); conn.close()
+    return r
+
+def chiqim_jami(xodim_id, komp_id, sana_from=None, sana_to=None):
+    """Xodimning umumiy chiqim summasini hisoblash"""
+    conn = connect(); cur = conn.cursor()
+    if sana_from and sana_to:
+        cur.execute('''SELECT SUM(summa) FROM chiqim
+                      WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s''',
+                    (xodim_id, komp_id, sana_from, sana_to))
+    else:
+        cur.execute('''SELECT SUM(summa) FROM chiqim
+                      WHERE xodim_id=%s AND komp_id=%s''',
+                    (xodim_id, komp_id))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return float(r[0]) if r and r[0] else 0.0

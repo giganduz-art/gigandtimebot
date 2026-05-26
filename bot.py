@@ -90,7 +90,10 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     ADM_XABAR_MENU, ADM_XABAR_RECIPIENT, ADM_XABAR_SUBJECT, ADM_XABAR_MATN, ADM_XABAR_INBOX, ADM_XABAR_HISTORY,
     HR_XABAR_MENU, HR_XABAR_RECIPIENT, HR_XABAR_SUBJECT, HR_XABAR_MATN, HR_XABAR_INBOX, HR_XABAR_HISTORY,
     XOD_XABAR_MENU, XOD_XABAR_RECIPIENT, XOD_XABAR_SUBJECT, XOD_XABAR_MATN, XOD_XABAR_INBOX, XOD_XABAR_HISTORY,
-) = range(114)
+    # Kirm/Chiqim states
+    XOD_KIRM_MENU, XOD_KIRM_TURI, XOD_KIRM_SUMMA, XOD_KIRM_IZOH,
+    XOD_CHIQIM_MENU, XOD_CHIQIM_TURI, XOD_CHIQIM_SUMMA, XOD_CHIQIM_IZOH,
+) = range(122)
 
 # ==================== MENYULAR ====================
 
@@ -2901,6 +2904,15 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif matn == "💬 Xabar":
         return await xod_xabar_menu(update, context)
 
+    elif matn == "💰 Kirm Xisobim":
+        return await xod_kirm_menu(update, context)
+
+    elif matn == "💰 Chiqim Xisobim":
+        return await xod_chiqim_menu(update, context)
+
+    elif matn == "📄 Xisoobotlarim":
+        return await xod_xisobotlarim(update, context)
+
     elif matn == "📡 WiFi ulangan":
         xodim_id = context.user_data.get('xodim_id')
         komp_id = context.user_data.get('komp_id')
@@ -3793,6 +3805,269 @@ async def xod_xabar_matn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=xod_menu_kb())
         return XOD_MENU
 
+# ==================== KIRM/CHIQIM (FINANCIAL) HANDLERS ====================
+
+async def xod_kirm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xodim income menu"""
+    matn = update.message.text
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "💰 Kirm Xisobim":
+        # Show current balance and options
+        jami_kirm = kirm_jami(xodim_id, komp_id)
+        await update.message.reply_text(
+            f"💰 *KIRM XISOBIM*\n\n"
+            f"📊 Jami kirm: {jami_kirm:,.2f} so'm\n\n"
+            f"Nimalarga kirm qo'shish kerak?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)"],
+                ["📦 TAVAR (Tovar)", "🎁 BONUS (Bonusiya)"],
+                ["📋 Ko'rish", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return XOD_KIRM_MENU
+
+    elif matn == "📋 Ko'rish":
+        kirm_list = kirm_olish(xodim_id, komp_id)
+        if not kirm_list:
+            await update.message.reply_text(
+                "📋 Kirm yozuvi yo'q!",
+                reply_markup=ReplyKeyboardMarkup([
+                    ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)"],
+                    ["📦 TAVAR (Tovar)", "🎁 BONUS (Bonusiya)"],
+                    ["🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return XOD_KIRM_MENU
+
+        xabar = "💰 *KIRM YOZUVLARI (Oxirgi 15):*\n\n"
+        jami = 0
+        for idx, (k_id, turi, summa, izoh, sana, vaqt, yaratilgan, by_name) in enumerate(kirm_list[:15], 1):
+            jami += float(summa)
+            turi_emoji = {"NAQT": "💵", "KARTA": "💳", "TAVAR": "📦", "BONUS": "🎁"}.get(turi, "📄")
+            xabar += f"{idx}. {turi_emoji} {turi}\n"
+            xabar += f"   💰 {summa:,.2f} so'm | {sana}\n"
+            if izoh:
+                xabar += f"   📝 {izoh}\n"
+            xabar += "\n"
+
+        xabar += f"\n📊 *Jami: {jami:,.2f} so'm*"
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)"],
+                ["📦 TAVAR (Tovar)", "🎁 BONUS (Bonusiya)"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return XOD_KIRM_MENU
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    elif matn in ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)", "📦 TAVAR (Tovar)", "🎁 BONUS (Bonusiya)"]:
+        context.user_data['kirm_turi'] = matn.split(" ")[0]  # Get emoji
+        await update.message.reply_text(
+            "💰 Summa (so'm)ni kiriting:",
+            reply_markup=ReplyKeyboardRemove())
+        return XOD_KIRM_SUMMA
+
+    return XOD_KIRM_MENU
+
+async def xod_kirm_summa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Income amount input"""
+    try:
+        summa = float(update.message.text.replace(",", "").strip())
+        if summa <= 0:
+            await update.message.reply_text("❌ Summa musbat bo'lsin!")
+            return XOD_KIRM_SUMMA
+        context.user_data['kirm_summa'] = summa
+        await update.message.reply_text(
+            "📝 Izoh (ixtiyoriy, tyex - tasvir/tafsilot):",
+            reply_markup=ReplyKeyboardRemove())
+        return XOD_KIRM_IZOH
+    except:
+        await update.message.reply_text("❌ Raqam kiriting!")
+        return XOD_KIRM_SUMMA
+
+async def xod_kirm_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Income note and save"""
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+    xodim = xodim_olish(xodim_id)
+
+    izoh = update.message.text.strip() if update.message.text else None
+    turi = context.user_data.get('kirm_turi', '💵')
+    summa = context.user_data.get('kirm_summa', 0)
+    sana = hozir().strftime("%Y-%m-%d")
+    vaqt = hozir().strftime("%H:%M")
+
+    try:
+        kirm_qoshish(
+            xodim_id, komp_id, turi, summa, izoh,
+            sana, vaqt, 'xodim', xodim[1] if xodim else 'Xodim'
+        )
+
+        jami_kirm = kirm_jami(xodim_id, komp_id)
+        await update.message.reply_text(
+            f"✅ Kirm saqlandi!\n\n"
+            f"{turi} {summa:,.2f} so'm\n"
+            f"📊 Jami kirm: {jami_kirm:,.2f} so'm",
+            reply_markup=xod_menu_kb())
+
+        for key in ['kirm_turi', 'kirm_summa']:
+            context.user_data.pop(key, None)
+
+        return XOD_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+async def xod_chiqim_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xodim expense menu"""
+    matn = update.message.text
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+
+    if matn == "💰 Chiqim Xisobim":
+        # Show current expenses and options
+        jami_chiqim = chiqim_jami(xodim_id, komp_id)
+        await update.message.reply_text(
+            f"💸 *CHIQIM XISOBIM*\n\n"
+            f"📊 Jami chiqim: {jami_chiqim:,.2f} so'm\n\n"
+            f"Nimalarga chiqim qo'shish kerak?",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)"],
+                ["📦 TAVAR (Tovar)", "⚠️ JARIMA (Штраф)"],
+                ["📋 Ko'rish", "🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return XOD_CHIQIM_MENU
+
+    elif matn == "📋 Ko'rish":
+        chiqim_list = chiqim_olish(xodim_id, komp_id)
+        if not chiqim_list:
+            await update.message.reply_text(
+                "📋 Chiqim yozuvi yo'q!",
+                reply_markup=ReplyKeyboardMarkup([
+                    ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)"],
+                    ["📦 TAVAR (Tovar)", "⚠️ JARIMA (Штраф)"],
+                    ["🔙 Orqaga"]
+                ], resize_keyboard=True))
+            return XOD_CHIQIM_MENU
+
+        xabar = "💸 *CHIQIM YOZUVLARI (Oxirgi 15):*\n\n"
+        jami = 0
+        for idx, (c_id, turi, summa, izoh, sana, vaqt, yaratilgan, by_name) in enumerate(chiqim_list[:15], 1):
+            jami += float(summa)
+            turi_emoji = {"NAQT": "💵", "KARTA": "💳", "TAVAR": "📦", "JARIMA": "⚠️"}.get(turi, "📄")
+            xabar += f"{idx}. {turi_emoji} {turi}\n"
+            xabar += f"   💸 -{summa:,.2f} so'm | {sana}\n"
+            if izoh:
+                xabar += f"   📝 {izoh}\n"
+            xabar += "\n"
+
+        xabar += f"\n📊 *Jami: -{jami:,.2f} so'm*"
+        await update.message.reply_text(
+            xabar,
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup([
+                ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)"],
+                ["📦 TAVAR (Tovar)", "⚠️ JARIMA (Штраф)"],
+                ["🔙 Orqaga"]
+            ], resize_keyboard=True))
+        return XOD_CHIQIM_MENU
+
+    elif matn == "🔙 Orqaga":
+        await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    elif matn in ["💵 NAQT (Pul)", "💳 KARTA (O'tkazma)", "📦 TAVAR (Tovar)", "⚠️ JARIMA (Штраф)"]:
+        context.user_data['chiqim_turi'] = matn.split(" ")[0]
+        await update.message.reply_text(
+            "💸 Summa (so'm)ni kiriting:",
+            reply_markup=ReplyKeyboardRemove())
+        return XOD_CHIQIM_SUMMA
+
+    return XOD_CHIQIM_MENU
+
+async def xod_chiqim_summa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Expense amount input"""
+    try:
+        summa = float(update.message.text.replace(",", "").strip())
+        if summa <= 0:
+            await update.message.reply_text("❌ Summa musbat bo'lsin!")
+            return XOD_CHIQIM_SUMMA
+        context.user_data['chiqim_summa'] = summa
+        await update.message.reply_text(
+            "📝 Izoh (ixtiyoriy):",
+            reply_markup=ReplyKeyboardRemove())
+        return XOD_CHIQIM_IZOH
+    except:
+        await update.message.reply_text("❌ Raqam kiriting!")
+        return XOD_CHIQIM_SUMMA
+
+async def xod_chiqim_izoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Expense note and save"""
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+    xodim = xodim_olish(xodim_id)
+
+    izoh = update.message.text.strip() if update.message.text else None
+    turi = context.user_data.get('chiqim_turi', '💵')
+    summa = context.user_data.get('chiqim_summa', 0)
+    sana = hozir().strftime("%Y-%m-%d")
+    vaqt = hozir().strftime("%H:%M")
+
+    try:
+        chiqim_qoshish(
+            xodim_id, komp_id, turi, summa, izoh,
+            sana, vaqt, 'xodim', xodim[1] if xodim else 'Xodim'
+        )
+
+        jami_chiqim = chiqim_jami(xodim_id, komp_id)
+        await update.message.reply_text(
+            f"✅ Chiqim saqlandi!\n\n"
+            f"{turi} {summa:,.2f} so'm\n"
+            f"📊 Jami chiqim: {jami_chiqim:,.2f} so'm",
+            reply_markup=xod_menu_kb())
+
+        for key in ['chiqim_turi', 'chiqim_summa']:
+            context.user_data.pop(key, None)
+
+        return XOD_MENU
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {str(e)}", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+async def xod_xisobotlarim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Xodim financial report"""
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
+
+    jami_kirm = kirm_jami(xodim_id, komp_id)
+    jami_chiqim = chiqim_jami(xodim_id, komp_id)
+    balans = jami_kirm - jami_chiqim
+
+    xabar = f"📄 *MENING XISOOBOTIM*\n\n"
+    xabar += f"💰 Jami kirm: +{jami_kirm:,.2f} so'm\n"
+    xabar += f"💸 Jami chiqim: -{jami_chiqim:,.2f} so'm\n"
+    xabar += f"━━━━━━━━━━━━━━━\n"
+    xabar += f"💼 Balans: {balans:+,.2f} so'm"
+
+    if balans > 0:
+        xabar += " ✅"
+    elif balans < 0:
+        xabar += " ❌"
+
+    await update.message.reply_text(
+        xabar,
+        parse_mode='Markdown',
+        reply_markup=xod_menu_kb())
+
+    return XOD_MENU
+
 async def _admin_xabar(context, xodim_id, komp_id, komp, tur, masofa=0, rasm_id=None, foto=True):
     xodim = xodim_olish(xodim_id)
     if not xodim or not komp: return
@@ -4544,6 +4819,13 @@ def main():
             XOD_XABAR_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_recipient)],
             XOD_XABAR_SUBJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_subject)],
             XOD_XABAR_MATN: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_xabar_matn)],
+            # Kirm/Chiqim states
+            XOD_KIRM_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_kirm_menu)],
+            XOD_KIRM_SUMMA: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_kirm_summa)],
+            XOD_KIRM_IZOH: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_kirm_izoh)],
+            XOD_CHIQIM_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_chiqim_menu)],
+            XOD_CHIQIM_SUMMA: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_chiqim_summa)],
+            XOD_CHIQIM_IZOH: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_chiqim_izoh)],
         },
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
