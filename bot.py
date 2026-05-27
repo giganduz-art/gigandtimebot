@@ -2813,34 +2813,24 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['wifi_waiting'] = True
             return XOD_MENU
 
-        if komp[9] or komp[14]:  # GPS yoki Live GPS aktiv
-            btn = [[KeyboardButton("📍 Joylashuvni yuboring", request_location=True)]]
-            await update.message.reply_text(
-                "📍 Joylashuvingizni yuboring:",
-                parse_mode='Markdown',
-                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
-            return XOD_KELDI_GPS
-        else:
-            # GPS o'chirilgan, lekin selfie kerak
-            natija = keldi_belgilash(xodim_id, komp_id)
-            if natija == "already":
-                await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
-                return XOD_MENU
-            _, vaqt, kechikish = natija.split("|")
-            msg = f"✅ Keldi vaqti: {vaqt}"
-            if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
+        # SODDA: Darhol mark va malumot so'ra
+        natija = keldi_belgilash(xodim_id, komp_id)
+        if natija == "already":
+            await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
+            return XOD_MENU
+        _, vaqt, kechikish = natija.split("|")
+        msg = f"✅ Keldi vaqti: {vaqt}"
+        if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
 
-            # Selfie yoki video so'ra - FAQAT VIDEO
-            context.user_data['keldi_m'] = 0
-            context.user_data['keldi_rasm_waiting'] = True  # Flag for audio rejection handler
-            video_kb = ReplyKeyboardMarkup([
-                ["📹 Video yubor"],
-                ["❌ Bekor"]
-            ], resize_keyboard=True, one_time_keyboard=True)
-            await update.message.reply_text(
-                f"{msg}\n\n📹 Video yuboring (dumaloq video yoki selfie):",
-                reply_markup=video_kb)
-            return XOD_KELDI_RASM
+        # Sodda tugmalar - xodim tanlaydi
+        tugmalar = [
+            ["📍 Lokatsiya", "📹 Video"],
+            ["🎤 Audio", "📝 Matn"],
+            ["🔙 Menyu"]
+        ]
+        context.user_data['keldi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt}
+        await update.message.reply_text(f"{msg}\n\n📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return XOD_KELDI_ACTION
 
     elif matn == "🚪 Ketdim":
         xodim_id = context.user_data.get('xodim_id')
@@ -2856,32 +2846,24 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['wifi_waiting_ketdi'] = True
             return XOD_MENU
 
-        if komp[9] or komp[14]:
-            btn = [[KeyboardButton("📍 Joylashuvni yuboring", request_location=True)]]
-            await update.message.reply_text("📍 Joylashuvingizni yuboring:",
-                reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True, one_time_keyboard=True))
-            return XOD_KETDI_GPS
-        else:
-            natija = ketdi_belgilash(xodim_id, komp_id)
-            if natija == "nokeldi":
-                await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
-                return XOD_MENU
-            _, vaqt, ish_soat, ish_tugash = natija.split("|")
-            context.user_data['ketdi_vaqt'] = vaqt
-            context.user_data['ketdi_ish_soat'] = ish_soat
-            context.user_data['ketdi_ish_tugash'] = ish_tugash
+        # SODDA: Darhol mark va malumot so'ra
+        natija = ketdi_belgilash(xodim_id, komp_id)
+        if natija == "nokeldi":
+            await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
+            return XOD_MENU
+        _, vaqt, ish_soat, ish_tugash = natija.split("|")
+        s = int(float(ish_soat)); d = int((float(ish_soat) - s) * 60)
+        msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa"
 
-            # Selfie yoki video so'ra - FAQAT VIDEO
-            context.user_data['ketdi_m'] = 0
-            context.user_data['ketdi_rasm_waiting'] = True  # Flag for audio rejection handler
-            video_kb = ReplyKeyboardMarkup([
-                ["📹 Video yubor"],
-                ["❌ Bekor"]
-            ], resize_keyboard=True, one_time_keyboard=True)
-            await update.message.reply_text(
-                f"✅ Ketdi vaqti: {vaqt}\n\n📹 Video yuboring (dumaloq video yoki selfie):",
-                reply_markup=video_kb)
-            return XOD_KETDI_RASM
+        # Sodda tugmalar - xodim tanlaydi
+        tugmalar = [
+            ["📍 Lokatsiya", "📹 Video"],
+            ["🎤 Audio", "📝 Matn"],
+            ["🔙 Menyu"]
+        ]
+        context.user_data['ketdi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'ish_soat': ish_soat}
+        await update.message.reply_text(f"{msg}\n\n📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+        return XOD_KETDI_ACTION
 
     elif matn == "📋 Davomatim":
         davomatlar = xodim_davomati(xodim_id)
