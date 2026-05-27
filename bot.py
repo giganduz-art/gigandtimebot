@@ -3120,6 +3120,24 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if live_period and komp and komp[14]:
         live_lokatsiya_saqlash(xodim_id, komp_id, lat, lon)
 
+    # Check if we're coming from the simplified "Keldim" flow (already marked)
+    if context.user_data.get('keldi_data'):
+        # Attendance already marked, just save location data
+        xodim = xodim_olish(xodim_id)
+        msg = f"✅ Lokatsiya qabul qilindi\n📏 {m}m"
+
+        # Notify admin about location
+        await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, f"Lokatsiya: {m}m", False)
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Xodim'
+        audit_log_qoshish(komp_id, 'KELDI_GPS', f"Lokatsiya: {m}m", xodim_id, None, None, user_id, user_ism)
+
+        await update.message.reply_text(msg, reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    # Old flow: attendance not yet marked
     natija = keldi_belgilash(xodim_id, komp_id)
     if natija == "already":
         await update.message.reply_text("⚠️ Bugun allaqachon belgilangan!", reply_markup=xod_menu_kb())
@@ -3152,7 +3170,8 @@ async def xod_reject_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
-    if matn == "☰ Menu" or matn == "🏠 Bosh menu":
+    if matn == "☰ Menu" or matn == "🏠 Bosh menu" or matn == "🔙 Menyu":
+        context.user_data['keldi_rasm_waiting'] = False
         return await start(update, context)
 
     # Cancel button
@@ -3162,10 +3181,17 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_MENU
 
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
-            ["📹 Video yubor"],
-            ["❌ Bekor"]
-        ], resize_keyboard=True, one_time_keyboard=True))
+        # For simplified flow, show our custom buttons instead of restart_kb()
+        if context.user_data.get('keldi_data'):
+            await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
+                ["📹 Rasm/Video"],
+                ["🔙 Menyu"]
+            ], resize_keyboard=True, one_time_keyboard=True))
+        else:
+            await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
+                ["📹 Video yubor"],
+                ["❌ Bekor"]
+            ], resize_keyboard=True, one_time_keyboard=True))
         return XOD_KELDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
@@ -3174,6 +3200,7 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keldi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
     m = context.user_data.get('keldi_m', 0)
+    context.user_data['keldi_rasm_waiting'] = False
 
     # MOTIVATSIYA: Streakni olish va motivatsiya matni yaratish
     xodim = xodim_olish(xodim_id)
@@ -3211,6 +3238,24 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=xod_menu_kb())
         return XOD_MENU
     komp = kompaniya_olish(komp_id)
+
+    # Check if we're coming from the simplified "Ketdim" flow (already marked)
+    if context.user_data.get('ketdi_data'):
+        # Attendance already marked, just save location data
+        msg = f"✅ Lokatsiya qabul qilindi\n📏 {m}m"
+
+        # Notify admin about location
+        await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, f"Lokatsiya: {m}m", False)
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Xodim'
+        audit_log_qoshish(komp_id, 'KETDI_GPS', f"Lokatsiya: {m}m", xodim_id, None, None, user_id, user_ism)
+
+        await update.message.reply_text(msg, reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    # Old flow: attendance not yet marked
     natija = ketdi_belgilash(xodim_id, komp_id)
     if natija == "nokeldi":
         await update.message.reply_text("❌ Avval keldi belgilanmagan!", reply_markup=xod_menu_kb())
@@ -3231,7 +3276,8 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     matn = update.message.text
-    if matn == "☰ Menu" or matn == "🏠 Bosh menu":
+    if matn == "☰ Menu" or matn == "🏠 Bosh menu" or matn == "🔙 Menyu":
+        context.user_data['ketdi_rasm_waiting'] = False
         return await start(update, context)
 
     # Cancel button
@@ -3241,10 +3287,17 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_MENU
 
     if not update.message.photo and not update.message.video_note:
-        await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
-            ["📹 Video yubor"],
-            ["❌ Bekor"]
-        ], resize_keyboard=True, one_time_keyboard=True))
+        # For simplified flow, show our custom buttons instead of restart_kb()
+        if context.user_data.get('ketdi_data'):
+            await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
+                ["📹 Rasm/Video"],
+                ["🔙 Menyu"]
+            ], resize_keyboard=True, one_time_keyboard=True))
+        else:
+            await update.message.reply_text("❌ Faqat video yuboring!", reply_markup=ReplyKeyboardMarkup([
+                ["📹 Video yubor"],
+                ["❌ Bekor"]
+            ], resize_keyboard=True, one_time_keyboard=True))
         return XOD_KETDI_RASM
     xodim_id = context.user_data['xodim_id']
     komp_id = context.user_data['komp_id']
@@ -3253,6 +3306,7 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ketdi_rasm_saqlash(xodim_id, rasm_id)
     komp = kompaniya_olish(komp_id)
     m = context.user_data.get('ketdi_m', 0)
+    context.user_data['ketdi_rasm_waiting'] = False
 
     # MOTIVATSIYA: Bugungi statistika va motivatsiya matni
     xodim = xodim_olish(xodim_id)
