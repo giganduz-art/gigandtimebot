@@ -2952,6 +2952,149 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return XOD_MENU
 
+async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle button selection after Keldim - Lokatsiya, Video, Audio, Matn"""
+    matn = update.message.text
+
+    if matn == "🔙 Menyu":
+        context.user_data['keldi_matn_waiting'] = False
+        await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    if matn == "📍 Lokatsiya":
+        await update.message.reply_text("📍 Lokatsiyani yuboring:", reply_markup=ReplyKeyboardMarkup([
+            [KeyboardButton(text="📍 Lokatsiya", request_location=True)],
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        return XOD_KELDI_GPS
+
+    if matn == "📹 Video":
+        await update.message.reply_text("📹 Video yoki 📸 Rasm yuboring:", reply_markup=ReplyKeyboardMarkup([
+            ["📹 Rasm/Video"],
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        context.user_data['keldi_rasm_waiting'] = True
+        return XOD_KELDI_RASM
+
+    if matn == "🎤 Audio":
+        # Note: The xod_reject_audio handler will reject this, but we send them to the state anyway
+        await update.message.reply_text("🎤 Audio yuboring:", reply_markup=ReplyKeyboardMarkup([
+            ["🎤 Audio"],
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        return XOD_KELDI_AUDIO
+
+    if matn == "📝 Matn":
+        await update.message.reply_text("📝 Matn izoh yuboring:", reply_markup=ReplyKeyboardMarkup([
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        context.user_data['keldi_matn_waiting'] = True
+        return XOD_KELDI_ACTION  # Wait for text in same state
+
+    # If text is received while waiting for Matn (not a button)
+    if context.user_data.get('keldi_matn_waiting') and matn != "🔙 Menyu":
+        xodim_id = context.user_data['xodim_id']
+        komp_id = context.user_data['komp_id']
+        keldi_data = context.user_data.get('keldi_data', {})
+
+        # Save the text
+        keldi_rasm_saqlash(xodim_id, matn)  # Reuse function for text as well
+        context.user_data['keldi_matn_waiting'] = False
+
+        # Notify admin
+        komp = kompaniya_olish(komp_id)
+        xodim = xodim_olish(xodim_id)
+        await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, matn, False)
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Xodim'
+        audit_log_qoshish(komp_id, 'KELDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
+
+        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{matn}", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    # Default: show menu again if unrecognized input
+    if not context.user_data.get('keldi_matn_waiting'):
+        tugmalar = [
+            ["📍 Lokatsiya", "📹 Video"],
+            ["🎤 Audio", "📝 Matn"],
+            ["🔙 Menyu"]
+        ]
+        await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+    return XOD_KELDI_ACTION
+
+async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle button selection after Ketdim - Lokatsiya, Video, Audio, Matn"""
+    matn = update.message.text
+
+    if matn == "🔙 Menyu":
+        context.user_data['ketdi_matn_waiting'] = False
+        await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    if matn == "📍 Lokatsiya":
+        await update.message.reply_text("📍 Lokatsiyani yuboring:", reply_markup=ReplyKeyboardMarkup([
+            [KeyboardButton(text="📍 Lokatsiya", request_location=True)],
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        return XOD_KETDI_GPS
+
+    if matn == "📹 Video":
+        await update.message.reply_text("📹 Video yoki 📸 Rasm yuboring:", reply_markup=ReplyKeyboardMarkup([
+            ["📹 Rasm/Video"],
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        context.user_data['ketdi_rasm_waiting'] = True
+        return XOD_KETDI_RASM
+
+    if matn == "🎤 Audio":
+        await update.message.reply_text("🎤 Audio yuboring:", reply_markup=ReplyKeyboardMarkup([
+            ["🎤 Audio"],
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        return XOD_KETDI_AUDIO
+
+    if matn == "📝 Matn":
+        await update.message.reply_text("📝 Matn izoh yuboring:", reply_markup=ReplyKeyboardMarkup([
+            ["🔙 Menyu"]
+        ], resize_keyboard=True))
+        context.user_data['ketdi_matn_waiting'] = True
+        return XOD_KETDI_ACTION  # Wait for text in same state
+
+    # If text is received while waiting for Matn (not a button)
+    if context.user_data.get('ketdi_matn_waiting') and matn != "🔙 Menyu":
+        xodim_id = context.user_data['xodim_id']
+        komp_id = context.user_data['komp_id']
+        ketdi_data = context.user_data.get('ketdi_data', {})
+
+        # Save the text
+        keldi_rasm_saqlash(xodim_id, matn)  # Reuse function for text as well
+        context.user_data['ketdi_matn_waiting'] = False
+
+        # Notify admin
+        komp = kompaniya_olish(komp_id)
+        xodim = xodim_olish(xodim_id)
+        await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, matn, False)
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Xodim'
+        audit_log_qoshish(komp_id, 'KETDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
+
+        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{matn}", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    # Default: show menu again if unrecognized input
+    if not context.user_data.get('ketdi_matn_waiting'):
+        tugmalar = [
+            ["📍 Lokatsiya", "📹 Video"],
+            ["🎤 Audio", "📝 Matn"],
+            ["🔙 Menyu"]
+        ]
+        await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+    return XOD_KETDI_ACTION
+
 async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.location:
         await update.message.reply_text("❌ GPS yuboring!")
@@ -4897,9 +5040,11 @@ def main():
             HR_VIEW_XODIM: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_view_xodim)],
             HR_VIEW_SANA: [MessageHandler(filters.TEXT & ~filters.COMMAND, hr_view_sana)],
             XOD_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_menu_handler)],
+            XOD_KELDI_ACTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_keldi_action)],
             XOD_KELDI_GPS: [MessageHandler(filters.LOCATION, xod_keldi_gps)],
             XOD_KELDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_keldi_rasm)],
             XOD_KELDI_AUDIO: [MessageHandler(filters.VOICE | filters.AUDIO, xod_reject_audio)],
+            XOD_KETDI_ACTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, xod_ketdi_action)],
             XOD_KETDI_GPS: [MessageHandler(filters.LOCATION, xod_ketdi_gps)],
             XOD_KETDI_RASM: [MessageHandler(filters.PHOTO | filters.VIDEO_NOTE, xod_ketdi_rasm)],
             XOD_KETDI_AUDIO: [MessageHandler(filters.VOICE | filters.AUDIO, xod_reject_audio)],
