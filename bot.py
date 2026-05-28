@@ -2879,11 +2879,15 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             features.append('gps')
         if komp and komp[10]:  # Selfie enabled
             features.append('video')
-        features.extend(['audio', 'matn'])  # Always available
 
         context.user_data['keldi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'features': features, 'feature_idx': 0}
 
-        # Avtomatik birinchi feature so'ra
+        # Agar features bo'lsa, avtomatik birinchi feature so'ra
+        if not features:
+            # Hech qanday feature yo'q, tugallandi
+            await update.message.reply_text(f"{msg}\n\n✅ Tugallandi!", reply_markup=xod_menu_kb())
+            return XOD_MENU
+
         if features[0] == 'gps':
             kb = ReplyKeyboardMarkup(
                 [[KeyboardButton(text="📍 Lokatsiyani Yubor", request_location=True)], ["🔙 Menyu"]],
@@ -2933,11 +2937,15 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             features.append('gps')
         if komp and komp[10]:  # Selfie enabled
             features.append('video')
-        features.extend(['audio', 'matn'])  # Always available
 
         context.user_data['ketdi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'ish_soat': ish_soat, 'features': features, 'feature_idx': 0}
 
-        # Avtomatik birinchi feature so'ra
+        # Agar features bo'lsa, avtomatik birinchi feature so'ra
+        if not features:
+            # Hech qanday feature yo'q, tugallandi
+            await update.message.reply_text(f"{msg}\n\n✅ Tugallandi!", reply_markup=xod_menu_kb())
+            return XOD_MENU
+
         if features[0] == 'gps':
             kb = ReplyKeyboardMarkup(
                 [[KeyboardButton(text="📍 Lokatsiyani Yubor", request_location=True)], ["🔙 Menyu"]],
