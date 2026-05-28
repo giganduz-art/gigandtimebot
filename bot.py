@@ -3007,10 +3007,14 @@ async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, matn, False)
 
         # MOTIVATSIYA
-        stat = xodim_bugun_statistika(xodim_id)
-        streak = xodim_streak_olish(xodim_id)
-        kechikish = int(stat[3]) if stat and stat[3] else 0
-        motivatsiya = generate_keldi_motivation(xodim, kechikish, streak)
+        try:
+            stat = xodim_bugun_statistika(xodim_id)
+            streak = xodim_streak_olish(xodim_id)
+            kechikish = int(stat[3]) if stat and stat[3] else 0
+            motivatsiya = generate_keldi_motivation(xodim, kechikish, streak)
+        except Exception as e:
+            logger.warning(f"Keldi motivation error: {e}")
+            motivatsiya = "✅ Keldi belgilandi!"
 
         # AUDIT LOG
         user_id = update.effective_user.id
@@ -3084,16 +3088,19 @@ async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, matn, False)
 
         # MOTIVATSIYA
-        ish_soat = ketdi_data.get('ish_soat', 0)
-        vaqt = ketdi_data.get('vaqt', '')
-        # Get ish_tugash from database
-        conn = connect(); cur = conn.cursor()
-        cur.execute("SELECT ish_tugash FROM davomat WHERE xodim_id=%s AND sana=%s",
-                    (xodim_id, hozir().strftime("%Y-%m-%d")))
-        dav = cur.fetchone(); cur.close(); conn.close()
-        ish_tugash = dav[0] if dav else '18:00'
-        streak = xodim_streak_olish(xodim_id)
-        motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, vaqt, ish_soat, streak)
+        try:
+            conn = connect(); cur = conn.cursor()
+            cur.execute("SELECT ish_tugash, ish_soat, ketdi FROM davomat WHERE xodim_id=%s AND sana=%s",
+                        (xodim_id, hozir().strftime("%Y-%m-%d")))
+            dav = cur.fetchone(); cur.close(); conn.close()
+            ish_tugash = dav[0] if dav and dav[0] else '18:00'
+            ish_soat = dav[1] if dav and dav[1] else 0
+            vaqt = dav[2] if dav and dav[2] else ''
+            streak = xodim_streak_olish(xodim_id)
+            motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, vaqt, ish_soat, streak)
+        except Exception as e:
+            logger.warning(f"Ketdi motivation error: {e}")
+            motivatsiya = "✅ Chiqish belgilandi!"
 
         # AUDIT LOG
         user_id = update.effective_user.id
