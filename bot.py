@@ -53,6 +53,56 @@ def ketdi_xabar_matni(ism, ish_tugash, ketdi_vaqt, ish_soat):
     except:
         return f"🚪 Ketdi vaqti: {ketdi_vaqt}"
 
+async def ask_next_feature(update: Update, context: ContextTypes.DEFAULT_TYPE, xodim_id: int, komp_id: int, mode: str):
+    """Ask for next enabled feature in sequence (mode='keldi' or 'ketdi')"""
+    data_key = f'{mode}_data'
+    data = context.user_data.get(data_key, {})
+    features = data.get('features', ['audio', 'matn'])
+    feature_idx = data.get('feature_idx', 0)
+
+    # Move to next feature
+    feature_idx += 1
+    data['feature_idx'] = feature_idx
+    context.user_data[data_key] = data
+
+    # Check if we have more features to ask for
+    if feature_idx >= len(features):
+        # Done with all features
+        await update.message.reply_text(f"✅ Barcha ma'lumot qabul qilindi!", reply_markup=xod_menu_kb())
+        return XOD_MENU
+
+    # Ask for next feature
+    next_feature = features[feature_idx]
+    gps_state_key = f'{mode}_gps'
+    rasm_state_key = f'{mode}_rasm'
+    audio_state_key = f'{mode}_audio'
+    action_state_key = f'{mode}_action'
+
+    # Map to the correct states
+    gps_state = XOD_KELDI_GPS if mode == 'keldi' else XOD_KETDI_GPS
+    rasm_state = XOD_KELDI_RASM if mode == 'keldi' else XOD_KETDI_RASM
+    audio_state = XOD_KELDI_AUDIO if mode == 'keldi' else XOD_KETDI_AUDIO
+    action_state = XOD_KELDI_ACTION if mode == 'keldi' else XOD_KETDI_ACTION
+
+    if next_feature == 'gps':
+        kb = ReplyKeyboardMarkup(
+            [[KeyboardButton(text="📍 Lokatsiyani Yubor", request_location=True)], ["🔙 Menyu"]],
+            resize_keyboard=True, one_time_keyboard=True
+        )
+        await update.message.reply_text("📍 Lokatsiyani yuboring:", reply_markup=kb)
+        return gps_state
+    elif next_feature == 'video':
+        context.user_data[f'{mode}_rasm_waiting'] = True
+        await update.message.reply_text("📹 Video yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+        return rasm_state
+    elif next_feature == 'audio':
+        await update.message.reply_text("🎤 Audio yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+        return audio_state
+    else:  # matn
+        context.user_data[f'{mode}_matn_waiting'] = True
+        await update.message.reply_text("📝 Matn yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+        return action_state
+
 # ==================== STATES ====================
 (
     TELEFON, KOD,
@@ -3011,8 +3061,14 @@ async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['keldi_matn_waiting'] = False
         komp = kompaniya_olish(komp_id)
         await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, matn, False)
-        await update.message.reply_text(f"✅ Qabul qilindi!", reply_markup=xod_menu_kb())
-        return XOD_MENU
+
+        # Check if from simplified flow with more features
+        if context.user_data.get('keldi_data'):
+            await update.message.reply_text(f"✅ Matn qabul qilindi!")
+            return await ask_next_feature(update, context, xodim_id, komp_id, 'keldi')
+        else:
+            await update.message.reply_text(f"✅ Qabul qilindi!", reply_markup=xod_menu_kb())
+            return XOD_MENU
 
     # Button selections
     if matn == "🔙 Menyu":
@@ -3057,8 +3113,14 @@ async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['ketdi_matn_waiting'] = False
         komp = kompaniya_olish(komp_id)
         await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, matn, False)
-        await update.message.reply_text(f"✅ Qabul qilindi!", reply_markup=xod_menu_kb())
-        return XOD_MENU
+
+        # Check if from simplified flow with more features
+        if context.user_data.get('ketdi_data'):
+            await update.message.reply_text(f"✅ Matn qabul qilindi!")
+            return await ask_next_feature(update, context, xodim_id, komp_id, 'ketdi')
+        else:
+            await update.message.reply_text(f"✅ Qabul qilindi!", reply_markup=xod_menu_kb())
+            return XOD_MENU
 
     # Button selections
     if matn == "🔙 Menyu":
@@ -3125,8 +3187,10 @@ async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_ism = update.effective_user.first_name or 'Xodim'
         audit_log_qoshish(komp_id, 'KELDI_GPS', f"Lokatsiya: {m}m", xodim_id, None, None, user_id, user_ism)
 
-        await update.message.reply_text(msg, reply_markup=xod_menu_kb())
-        return XOD_MENU
+        await update.message.reply_text(msg)
+
+        # Ask for next feature in sequence
+        return await ask_next_feature(update, context, xodim_id, komp_id, 'keldi')
 
     # Old flow: attendance not yet marked
     natija = keldi_belgilash(xodim_id, komp_id)
@@ -3209,9 +3273,15 @@ async def xod_keldi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      rasm_id if not is_photo else None, user_id, user_ism)
 
     await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', m, rasm_id, is_photo)
-    await update.message.reply_text(f"✅ Davomat qabul qilindi!\n\n{motivatsiya}",
-                                     parse_mode='Markdown', reply_markup=xod_menu_kb())
-    return XOD_MENU
+
+    # Check if from simplified flow with more features
+    if context.user_data.get('keldi_data'):
+        await update.message.reply_text(f"✅ Video qabul qilindi!")
+        return await ask_next_feature(update, context, xodim_id, komp_id, 'keldi')
+    else:
+        await update.message.reply_text(f"✅ Davomat qabul qilindi!\n\n{motivatsiya}",
+                                         parse_mode='Markdown', reply_markup=xod_menu_kb())
+        return XOD_MENU
 
 async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.location:
@@ -3243,8 +3313,10 @@ async def xod_ketdi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_ism = update.effective_user.first_name or 'Xodim'
         audit_log_qoshish(komp_id, 'KETDI_GPS', f"Lokatsiya: {m}m", xodim_id, None, None, user_id, user_ism)
 
-        await update.message.reply_text(msg, reply_markup=xod_menu_kb())
-        return XOD_MENU
+        await update.message.reply_text(msg)
+
+        # Ask for next feature in sequence
+        return await ask_next_feature(update, context, xodim_id, komp_id, 'ketdi')
 
     # Old flow: attendance not yet marked
     natija = ketdi_belgilash(xodim_id, komp_id)
@@ -3317,9 +3389,15 @@ async def xod_ketdi_rasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      rasm_id if not is_photo else None, user_id, user_ism)
 
     await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', m, rasm_id, is_photo)
-    await update.message.reply_text(f"✅ Chiqish belgilandi!\n\n{motivatsiya}",
-                                     parse_mode='Markdown', reply_markup=xod_menu_kb())
-    return XOD_MENU
+
+    # Check if from simplified flow with more features
+    if context.user_data.get('ketdi_data'):
+        await update.message.reply_text(f"✅ Video qabul qilindi!")
+        return await ask_next_feature(update, context, xodim_id, komp_id, 'ketdi')
+    else:
+        await update.message.reply_text(f"✅ Chiqish belgilandi!\n\n{motivatsiya}",
+                                         parse_mode='Markdown', reply_markup=xod_menu_kb())
+        return XOD_MENU
 
 # ==================== XABAR (MESSAGING) HANDLERS ====================
 
