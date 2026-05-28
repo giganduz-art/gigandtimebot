@@ -2977,19 +2977,18 @@ async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
         return XOD_MENU
     elif matn == "📍 Lokatsiya":
-        kb = ReplyKeyboardMarkup([[KeyboardButton(text="📍 Yuboring", request_location=True)], ["🔙 Menyu"]], resize_keyboard=True)
-        await update.message.reply_text("📍 Lokatsiyani yuboring:", reply_markup=kb)
+        await update.message.reply_text("📍 Lokatsiyani yuboring! (Telegram'dagi 📎 dan tanla)", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KELDI_GPS
     elif matn == "📹 Video":
         context.user_data['keldi_rasm_waiting'] = True
-        await update.message.reply_text("📹 Video yuboring:", reply_markup=ReplyKeyboardMarkup([["📹 Yubor"], ["🔙 Menyu"]], resize_keyboard=True))
+        await update.message.reply_text("📹 Video yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KELDI_RASM
     elif matn == "🎤 Audio":
-        await update.message.reply_text("🎤 Audio yuboring:", reply_markup=ReplyKeyboardMarkup([["🎤 Yubor"], ["🔙 Menyu"]], resize_keyboard=True))
+        await update.message.reply_text("🎤 Audio yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KELDI_AUDIO
     elif matn == "📝 Matn":
         context.user_data['keldi_matn_waiting'] = True
-        await update.message.reply_text("📝 Matn izoh yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+        await update.message.reply_text("📝 Matn yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KELDI_ACTION
     else:
         await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup([["📍 Lokatsiya", "📹 Video"], ["🎤 Audio", "📝 Matn"], ["🔙 Menyu"]], resize_keyboard=True))
@@ -3020,19 +3019,18 @@ async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
         return XOD_MENU
     elif matn == "📍 Lokatsiya":
-        kb = ReplyKeyboardMarkup([[KeyboardButton(text="📍 Yuboring", request_location=True)], ["🔙 Menyu"]], resize_keyboard=True)
-        await update.message.reply_text("📍 Lokatsiyani yuboring:", reply_markup=kb)
+        await update.message.reply_text("📍 Lokatsiyani yuboring! (Telegram'dagi 📎 dan tanla)", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KETDI_GPS
     elif matn == "📹 Video":
         context.user_data['ketdi_rasm_waiting'] = True
-        await update.message.reply_text("📹 Video yuboring:", reply_markup=ReplyKeyboardMarkup([["📹 Yubor"], ["🔙 Menyu"]], resize_keyboard=True))
+        await update.message.reply_text("📹 Video yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KETDI_RASM
     elif matn == "🎤 Audio":
-        await update.message.reply_text("🎤 Audio yuboring:", reply_markup=ReplyKeyboardMarkup([["🎤 Yubor"], ["🔙 Menyu"]], resize_keyboard=True))
+        await update.message.reply_text("🎤 Audio yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KETDI_AUDIO
     elif matn == "📝 Matn":
         context.user_data['ketdi_matn_waiting'] = True
-        await update.message.reply_text("📝 Matn izoh yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+        await update.message.reply_text("📝 Matn yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
         return XOD_KETDI_ACTION
     else:
         await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup([["📍 Lokatsiya", "📹 Video"], ["🎤 Audio", "📝 Matn"], ["🔙 Menyu"]], resize_keyboard=True))
