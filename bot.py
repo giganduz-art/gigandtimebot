@@ -3006,12 +3006,18 @@ async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xodim = xodim_olish(xodim_id)
         await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, matn, False)
 
+        # MOTIVATSIYA
+        stat = xodim_bugun_statistika(xodim_id)
+        streak = xodim_streak_olish(xodim_id)
+        kechikish = int(stat[3]) if stat and stat[3] else 0
+        motivatsiya = generate_keldi_motivation(xodim, kechikish, streak)
+
         # AUDIT LOG
         user_id = update.effective_user.id
         user_ism = update.effective_user.first_name or 'Xodim'
         audit_log_qoshish(komp_id, 'KELDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
 
-        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{matn}", reply_markup=xod_menu_kb())
+        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{motivatsiya}", parse_mode='Markdown', reply_markup=xod_menu_kb())
         return XOD_MENU
 
     # Default: show menu again if unrecognized input
@@ -3077,12 +3083,24 @@ async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xodim = xodim_olish(xodim_id)
         await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, matn, False)
 
+        # MOTIVATSIYA
+        ish_soat = ketdi_data.get('ish_soat', 0)
+        vaqt = ketdi_data.get('vaqt', '')
+        # Get ish_tugash from database
+        conn = connect(); cur = conn.cursor()
+        cur.execute("SELECT ish_tugash FROM davomat WHERE xodim_id=%s AND sana=%s",
+                    (xodim_id, hozir().strftime("%Y-%m-%d")))
+        dav = cur.fetchone(); cur.close(); conn.close()
+        ish_tugash = dav[0] if dav else '18:00'
+        streak = xodim_streak_olish(xodim_id)
+        motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, vaqt, ish_soat, streak)
+
         # AUDIT LOG
         user_id = update.effective_user.id
         user_ism = update.effective_user.first_name or 'Xodim'
         audit_log_qoshish(komp_id, 'KETDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
 
-        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{matn}", reply_markup=xod_menu_kb())
+        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{motivatsiya}", parse_mode='Markdown', reply_markup=xod_menu_kb())
         return XOD_MENU
 
     # Default: show menu again if unrecognized input
