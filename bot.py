@@ -2955,9 +2955,33 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button selection after Keldim - Lokatsiya, Video, Audio, Matn"""
     matn = update.message.text
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
 
-    if matn == "🔙 Menyu":
+    # FIRST: Check if waiting for text input (Matn)
+    if context.user_data.get('keldi_matn_waiting'):
+        if matn == "🔙 Menyu":
+            context.user_data['keldi_matn_waiting'] = False
+            await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+            return XOD_MENU
+
+        # Process text submission
+        keldi_rasm_saqlash(xodim_id, matn)
         context.user_data['keldi_matn_waiting'] = False
+        komp = kompaniya_olish(komp_id)
+        xodim = xodim_olish(xodim_id)
+        await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, matn, False)
+
+        await update.message.reply_text(f"✅ Qabul qilindi!\n📝 {matn}", reply_markup=xod_menu_kb())
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Xodim'
+        audit_log_qoshish(komp_id, 'KELDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
+        return XOD_MENU
+
+    # THEN: Check button selections
+    if matn == "🔙 Menyu":
         await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
         return XOD_MENU
 
@@ -2977,7 +3001,6 @@ async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return XOD_KELDI_RASM
 
     if matn == "🎤 Audio":
-        # Note: The xod_reject_audio handler will reject this, but we send them to the state anyway
         await update.message.reply_text("🎤 Audio yuboring:", reply_markup=ReplyKeyboardMarkup([
             ["🎤 Audio"],
             ["🔙 Menyu"]
@@ -2989,57 +3012,47 @@ async def xod_keldi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🔙 Menyu"]
         ], resize_keyboard=True))
         context.user_data['keldi_matn_waiting'] = True
-        return XOD_KELDI_ACTION  # Wait for text in same state
+        return XOD_KELDI_ACTION
 
-    # If text is received while waiting for Matn (not a button)
-    if context.user_data.get('keldi_matn_waiting') and matn != "🔙 Menyu":
-        xodim_id = context.user_data['xodim_id']
-        komp_id = context.user_data['komp_id']
-        keldi_data = context.user_data.get('keldi_data', {})
-
-        # Save the text
-        keldi_rasm_saqlash(xodim_id, matn)  # Reuse function for text as well
-        context.user_data['keldi_matn_waiting'] = False
-
-        # Notify admin
-        komp = kompaniya_olish(komp_id)
-        xodim = xodim_olish(xodim_id)
-        await _admin_xabar(context, xodim_id, komp_id, komp, 'keldi', 0, matn, False)
-
-        # MOTIVATSIYA
-        try:
-            stat = xodim_bugun_statistika(xodim_id)
-            streak = xodim_streak_olish(xodim_id)
-            kechikish = int(stat[3]) if stat and stat[3] else 0
-            motivatsiya = generate_keldi_motivation(xodim, kechikish, streak)
-        except Exception as e:
-            logger.warning(f"Keldi motivation error: {e}")
-            motivatsiya = "✅ Keldi belgilandi!"
-
-        # AUDIT LOG
-        user_id = update.effective_user.id
-        user_ism = update.effective_user.first_name or 'Xodim'
-        audit_log_qoshish(komp_id, 'KELDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
-
-        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{motivatsiya}", parse_mode='Markdown', reply_markup=xod_menu_kb())
-        return XOD_MENU
-
-    # Default: show menu again if unrecognized input
-    if not context.user_data.get('keldi_matn_waiting'):
-        tugmalar = [
-            ["📍 Lokatsiya", "📹 Video"],
-            ["🎤 Audio", "📝 Matn"],
-            ["🔙 Menyu"]
-        ]
-        await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+    # Default: show menu if unrecognized
+    tugmalar = [
+        ["📍 Lokatsiya", "📹 Video"],
+        ["🎤 Audio", "📝 Matn"],
+        ["🔙 Menyu"]
+    ]
+    await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
     return XOD_KELDI_ACTION
 
 async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button selection after Ketdim - Lokatsiya, Video, Audio, Matn"""
     matn = update.message.text
+    xodim_id = context.user_data.get('xodim_id')
+    komp_id = context.user_data.get('komp_id')
 
-    if matn == "🔙 Menyu":
+    # FIRST: Check if waiting for text input (Matn)
+    if context.user_data.get('ketdi_matn_waiting'):
+        if matn == "🔙 Menyu":
+            context.user_data['ketdi_matn_waiting'] = False
+            await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
+            return XOD_MENU
+
+        # Process text submission
+        keldi_rasm_saqlash(xodim_id, matn)
         context.user_data['ketdi_matn_waiting'] = False
+        komp = kompaniya_olish(komp_id)
+        xodim = xodim_olish(xodim_id)
+        await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, matn, False)
+
+        await update.message.reply_text(f"✅ Qabul qilindi!\n📝 {matn}", reply_markup=xod_menu_kb())
+
+        # AUDIT LOG
+        user_id = update.effective_user.id
+        user_ism = update.effective_user.first_name or 'Xodim'
+        audit_log_qoshish(komp_id, 'KETDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
+        return XOD_MENU
+
+    # THEN: Check button selections
+    if matn == "🔙 Menyu":
         await update.message.reply_text("👤 Xodim menu:", reply_markup=xod_menu_kb())
         return XOD_MENU
 
@@ -3070,54 +3083,15 @@ async def xod_ketdi_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🔙 Menyu"]
         ], resize_keyboard=True))
         context.user_data['ketdi_matn_waiting'] = True
-        return XOD_KETDI_ACTION  # Wait for text in same state
+        return XOD_KETDI_ACTION
 
-    # If text is received while waiting for Matn (not a button)
-    if context.user_data.get('ketdi_matn_waiting') and matn != "🔙 Menyu":
-        xodim_id = context.user_data['xodim_id']
-        komp_id = context.user_data['komp_id']
-        ketdi_data = context.user_data.get('ketdi_data', {})
-
-        # Save the text
-        keldi_rasm_saqlash(xodim_id, matn)  # Reuse function for text as well
-        context.user_data['ketdi_matn_waiting'] = False
-
-        # Notify admin
-        komp = kompaniya_olish(komp_id)
-        xodim = xodim_olish(xodim_id)
-        await _admin_xabar(context, xodim_id, komp_id, komp, 'ketdi', 0, matn, False)
-
-        # MOTIVATSIYA
-        try:
-            conn = connect(); cur = conn.cursor()
-            cur.execute("SELECT ish_tugash, ish_soat, ketdi FROM davomat WHERE xodim_id=%s AND sana=%s",
-                        (xodim_id, hozir().strftime("%Y-%m-%d")))
-            dav = cur.fetchone(); cur.close(); conn.close()
-            ish_tugash = dav[0] if dav and dav[0] else '18:00'
-            ish_soat = dav[1] if dav and dav[1] else 0
-            vaqt = dav[2] if dav and dav[2] else ''
-            streak = xodim_streak_olish(xodim_id)
-            motivatsiya = generate_ketdi_motivation(xodim, ish_tugash, vaqt, ish_soat, streak)
-        except Exception as e:
-            logger.warning(f"Ketdi motivation error: {e}")
-            motivatsiya = "✅ Chiqish belgilandi!"
-
-        # AUDIT LOG
-        user_id = update.effective_user.id
-        user_ism = update.effective_user.first_name or 'Xodim'
-        audit_log_qoshish(komp_id, 'KETDI_MATN', matn[:50], xodim_id, None, None, user_id, user_ism)
-
-        await update.message.reply_text(f"✅ Qabul qilindi!\n\n{motivatsiya}", parse_mode='Markdown', reply_markup=xod_menu_kb())
-        return XOD_MENU
-
-    # Default: show menu again if unrecognized input
-    if not context.user_data.get('ketdi_matn_waiting'):
-        tugmalar = [
-            ["📍 Lokatsiya", "📹 Video"],
-            ["🎤 Audio", "📝 Matn"],
-            ["🔙 Menyu"]
-        ]
-        await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
+    # Default: show menu if unrecognized
+    tugmalar = [
+        ["📍 Lokatsiya", "📹 Video"],
+        ["🎤 Audio", "📝 Matn"],
+        ["🔙 Menyu"]
+    ]
+    await update.message.reply_text("📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
     return XOD_KETDI_ACTION
 
 async def xod_keldi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
