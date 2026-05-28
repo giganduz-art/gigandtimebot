@@ -2822,20 +2822,36 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"✅ Keldi vaqti: {vaqt}"
         if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
 
-        # ADMIN CONFIG'GA QARAB TUGMALAR - DYNAMIC
+        # ADMIN CONFIG'GA QARAB - AVTOMATIK SO'RA
         komp = kompaniya_olish(komp_id)
-        tugmalar = []
+        features = []
         if komp and komp[9]:  # GPS enabled
-            tugmalar.append(["📍 Lokatsiya"])
+            features.append('gps')
         if komp and komp[10]:  # Selfie enabled
-            tugmalar.append(["📹 Video"])
-        # Audio va Matn har doim
-        tugmalar.append(["🎤 Audio", "📝 Matn"])
-        tugmalar.append(["🔙 Menyu"])
+            features.append('video')
+        features.extend(['audio', 'matn'])  # Always available
 
-        context.user_data['keldi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt}
-        await update.message.reply_text(f"{msg}\n\n📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
-        return XOD_KELDI_ACTION
+        context.user_data['keldi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'features': features, 'feature_idx': 0}
+
+        # Avtomatik birinchi feature so'ra
+        if features[0] == 'gps':
+            kb = ReplyKeyboardMarkup(
+                [[KeyboardButton(text="📍 Lokatsiyani Yubor", request_location=True)], ["🔙 Menyu"]],
+                resize_keyboard=True, one_time_keyboard=True
+            )
+            await update.message.reply_text(f"{msg}\n\n📍 Lokatsiyani yuboring:", reply_markup=kb)
+            return XOD_KELDI_GPS
+        elif features[0] == 'video':
+            context.user_data['keldi_rasm_waiting'] = True
+            await update.message.reply_text(f"{msg}\n\n📹 Video yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+            return XOD_KELDI_RASM
+        elif features[0] == 'audio':
+            await update.message.reply_text(f"{msg}\n\n🎤 Audio yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+            return XOD_KELDI_AUDIO
+        else:  # matn
+            context.user_data['keldi_matn_waiting'] = True
+            await update.message.reply_text(f"{msg}\n\n📝 Matn yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+            return XOD_KELDI_ACTION
 
     elif matn == "🚪 Ketdim":
         xodim_id = context.user_data.get('xodim_id')
@@ -2860,19 +2876,36 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         s = int(float(ish_soat)); d = int((float(ish_soat) - s) * 60)
         msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa"
 
-        # ADMIN CONFIG'GA QARAB TUGMALAR - DYNAMIC
+        # ADMIN CONFIG'GA QARAB - AVTOMATIK SO'RA
         komp = kompaniya_olish(komp_id)
-        tugmalar = []
+        features = []
         if komp and komp[9]:  # GPS enabled
-            tugmalar.append(["📍 Lokatsiya"])
+            features.append('gps')
         if komp and komp[10]:  # Selfie enabled
-            tugmalar.append(["📹 Video"])
-        # Audio va Matn har doim
-        tugmalar.append(["🎤 Audio", "📝 Matn"])
-        tugmalar.append(["🔙 Menyu"])
-        context.user_data['ketdi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'ish_soat': ish_soat}
-        await update.message.reply_text(f"{msg}\n\n📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
-        return XOD_KETDI_ACTION
+            features.append('video')
+        features.extend(['audio', 'matn'])  # Always available
+
+        context.user_data['ketdi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'ish_soat': ish_soat, 'features': features, 'feature_idx': 0}
+
+        # Avtomatik birinchi feature so'ra
+        if features[0] == 'gps':
+            kb = ReplyKeyboardMarkup(
+                [[KeyboardButton(text="📍 Lokatsiyani Yubor", request_location=True)], ["🔙 Menyu"]],
+                resize_keyboard=True, one_time_keyboard=True
+            )
+            await update.message.reply_text(f"{msg}\n\n📍 Lokatsiyani yuboring:", reply_markup=kb)
+            return XOD_KETDI_GPS
+        elif features[0] == 'video':
+            context.user_data['ketdi_rasm_waiting'] = True
+            await update.message.reply_text(f"{msg}\n\n📹 Video yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+            return XOD_KETDI_RASM
+        elif features[0] == 'audio':
+            await update.message.reply_text(f"{msg}\n\n🎤 Audio yuboring!", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+            return XOD_KETDI_AUDIO
+        else:  # matn
+            context.user_data['ketdi_matn_waiting'] = True
+            await update.message.reply_text(f"{msg}\n\n📝 Matn yuboring:", reply_markup=ReplyKeyboardMarkup([["🔙 Menyu"]], resize_keyboard=True))
+            return XOD_KETDI_ACTION
 
     elif matn == "📋 Davomatim":
         davomatlar = xodim_davomati(xodim_id)
