@@ -2822,12 +2822,17 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"✅ Keldi vaqti: {vaqt}"
         if int(kechikish) > 0: msg += f"\n⚠️ Kechikish: {kechikish_format(int(kechikish))}"
 
-        # Sodda tugmalar - xodim tanlaydi
-        tugmalar = [
-            ["📍 Lokatsiya", "📹 Video"],
-            ["🎤 Audio", "📝 Matn"],
-            ["🔙 Menyu"]
-        ]
+        # ADMIN CONFIG'GA QARAB TUGMALAR - DYNAMIC
+        komp = kompaniya_olish(komp_id)
+        tugmalar = []
+        if komp and komp[9]:  # GPS enabled
+            tugmalar.append(["📍 Lokatsiya"])
+        if komp and komp[10]:  # Selfie enabled
+            tugmalar.append(["📹 Video"])
+        # Audio va Matn har doim
+        tugmalar.append(["🎤 Audio", "📝 Matn"])
+        tugmalar.append(["🔙 Menyu"])
+
         context.user_data['keldi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt}
         await update.message.reply_text(f"{msg}\n\n📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return XOD_KELDI_ACTION
@@ -2855,12 +2860,16 @@ async def xod_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         s = int(float(ish_soat)); d = int((float(ish_soat) - s) * 60)
         msg = f"✅ Ketdi vaqti: {vaqt}\n⏱ Ish vaqti: {s} soat {d} daqiqa"
 
-        # Sodda tugmalar - xodim tanlaydi
-        tugmalar = [
-            ["📍 Lokatsiya", "📹 Video"],
-            ["🎤 Audio", "📝 Matn"],
-            ["🔙 Menyu"]
-        ]
+        # ADMIN CONFIG'GA QARAB TUGMALAR - DYNAMIC
+        komp = kompaniya_olish(komp_id)
+        tugmalar = []
+        if komp and komp[9]:  # GPS enabled
+            tugmalar.append(["📍 Lokatsiya"])
+        if komp and komp[10]:  # Selfie enabled
+            tugmalar.append(["📹 Video"])
+        # Audio va Matn har doim
+        tugmalar.append(["🎤 Audio", "📝 Matn"])
+        tugmalar.append(["🔙 Menyu"])
         context.user_data['ketdi_data'] = {'xodim_id': xodim_id, 'komp_id': komp_id, 'vaqt': vaqt, 'ish_soat': ish_soat}
         await update.message.reply_text(f"{msg}\n\n📸 Qanday malumot?", reply_markup=ReplyKeyboardMarkup(tugmalar, resize_keyboard=True))
         return XOD_KETDI_ACTION
