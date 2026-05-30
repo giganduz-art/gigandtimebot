@@ -5196,8 +5196,7 @@ async def live_location_timeout_job(context: ContextTypes.DEFAULT_TYPE):
     # Ketdi belgilangan xodimlarni topib, lokatsiyalarini o'chir
     cur.execute('''UPDATE live_lokatsiyalar SET faol=FALSE
                   WHERE faol=TRUE AND xodim_id IN (
-                    SELECT id FROM davomat d
-                    JOIN xodimlar x ON d.xodim_id=x.id
+                    SELECT d.xodim_id FROM davomat d
                     WHERE d.sana=%s AND d.ketdi IS NOT NULL
                   )''', (sana,))
     conn.commit(); cur.close(); conn.close()
