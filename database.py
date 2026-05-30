@@ -1,19 +1,41 @@
 import psycopg2
-from datetime import datetime, timedelta
+from psycopg2.pool import ThreadedConnectionPool
+from datetime import datetime, timedelta, date
+import calendar
 import pytz
 import openpyxl
 from openpyxl.styles import Font
 import os
+import time
 
 TASHKENT = pytz.timezone('Asia/Tashkent')
-SUPER_ADMIN_KOD = os.environ.get("SUPER_ADMIN_KOD", "0001")  # Boshlang'ich kod
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:RdcrgixOGANtWvspNqPdFVPhyUkBmjeS@kodama.proxy.rlwy.net:59039/railway"
-)
+SUPER_ADMIN_KOD = os.environ.get("SUPER_ADMIN_KOD", "0001")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+_pool = None
+_komp_kesh = {}   # {komp_id: (vaqt, data)}
+_KESH_TTL = 30    # 30 soniya
+
+def _get_pool():
+    global _pool
+    if _pool is None or _pool.closed:
+        _pool = ThreadedConnectionPool(5, 20, DATABASE_URL)
+    return _pool
+
+class _PooledConn:
+    def __init__(self, conn):
+        self._conn = conn
+    def cursor(self):
+        return self._conn.cursor()
+    def commit(self):
+        return self._conn.commit()
+    def rollback(self):
+        return self._conn.rollback()
+    def close(self):
+        _get_pool().putconn(self._conn)
 
 def connect():
-    return psycopg2.connect(DATABASE_URL)
+    return _PooledConn(_get_pool().getconn())
 
 def hozir():
     return datetime.now(TASHKENT)
@@ -28,6 +50,18 @@ def kechikish_format(d):
     return f"{d//60} soat {d%60} daqiqa" if d >= 60 else f"{d} daqiqa"
 
 def create_tables():
+    import time as _t
+    for attempt in range(3):
+        try:
+            _create_tables_inner()
+            return
+        except Exception as e:
+            if 'deadlock' in str(e).lower() and attempt < 2:
+                _t.sleep(2)
+            else:
+                raise
+
+def _create_tables_inner():
     conn = connect(); cur = conn.cursor()
 
     cur.execute('''CREATE TABLE IF NOT EXISTS super_adminlar (
@@ -60,6 +94,8 @@ def create_tables():
 
     # If migration didn't work, just add wifi_mac column
     cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS wifi_mac TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS audio_aktiv BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE kompaniyalar ADD COLUMN IF NOT EXISTS matn_aktiv BOOLEAN DEFAULT FALSE")
 
     cur.execute('''CREATE TABLE IF NOT EXISTS xodimlar (
         id SERIAL PRIMARY KEY, ism TEXT NOT NULL, telefon TEXT, kod TEXT,
@@ -70,6 +106,28 @@ def create_tables():
         rol TEXT DEFAULT 'xodim', holat TEXT DEFAULT 'faol', tugilgan_kun TEXT
     )''')
     cur.execute("ALTER TABLE xodimlar ADD COLUMN IF NOT EXISTS tugilgan_kun TEXT")
+    # Xodim uchun alohida funksiya sozlamalari (NULL = kompaniya sozlamasiga bo'ysunadi)
+    for col in ['xod_gps','xod_selfie','xod_audio','xod_matn','xod_face_id','xod_hikvision','xod_live_gps','xod_wifi']:
+        cur.execute(f"ALTER TABLE xodimlar ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT NULL")
+
+    cur.execute('''CREATE TABLE IF NOT EXISTS xodim_kpi (
+        id SERIAL PRIMARY KEY,
+        xodim_id INTEGER REFERENCES xodimlar(id) ON DELETE CASCADE,
+        komp_id INTEGER REFERENCES kompaniyalar(id),
+        topshiriq_jarima DECIMAL DEFAULT 0,
+        sababsiz_qolish_soat INTEGER DEFAULT 0,
+        sababsiz_qolish_jarima DECIMAL DEFAULT 0,
+        sababli_qolish_soat INTEGER DEFAULT 0,
+        sababli_qolish_jarima DECIMAL DEFAULT 0,
+        kech_kelish_daqiqa INTEGER DEFAULT 0,
+        kech_kelish_jarima DECIMAL DEFAULT 0,
+        erta_ketish_daqiqa INTEGER DEFAULT 0,
+        erta_ketish_jarima DECIMAL DEFAULT 0,
+        joy_tark_soat INTEGER DEFAULT 0,
+        joy_tark_jarima DECIMAL DEFAULT 0,
+        alo_mukofot DECIMAL DEFAULT 0,
+        qoshimcha_jarima DECIMAL DEFAULT 0
+    )''')
 
     cur.execute('''CREATE TABLE IF NOT EXISTS davomat (
         id SERIAL PRIMARY KEY, xodim_id INTEGER REFERENCES xodimlar(id),
@@ -85,6 +143,7 @@ def create_tables():
         kompaniya_id INTEGER REFERENCES kompaniyalar(id),
         sana TEXT, sabab TEXT, holat TEXT DEFAULT 'kutilmoqda'
     )''')
+    cur.execute("ALTER TABLE sababli_sorovlar ADD COLUMN IF NOT EXISTS kompaniya_id INTEGER REFERENCES kompaniyalar(id)")
 
     cur.execute('''CREATE TABLE IF NOT EXISTS live_lokatsiyalar (
         id SERIAL PRIMARY KEY, xodim_id INTEGER REFERENCES xodimlar(id),
@@ -281,13 +340,25 @@ def barcha_kompaniyalar():
                   live_gps_aktiv,live_gps_tekshiruv FROM kompaniyalar ORDER BY id''')
     r = cur.fetchall(); cur.close(); conn.close(); return r
 
-def kompaniya_olish(komp_id):
+def kompaniya_olish(komp_id, keshdan=True):
+    if keshdan and komp_id in _komp_kesh:
+        ts, data = _komp_kesh[komp_id]
+        if time.time() - ts < _KESH_TTL:
+            return data
     conn = connect(); cur = conn.cursor()
     cur.execute('''SELECT id,nomi,admin_telefon,admin_id,holat,
                   gps_lat,gps_lon,gps_radius,yaratilgan,
                   gps_aktiv,selfie_aktiv,face_id_aktiv,hikvision_aktiv,admin_kod,
-                  live_gps_aktiv,live_gps_tekshiruv,wifi_aktiv,wifi_ssid,wifi_mac FROM kompaniyalar WHERE id=%s''', (komp_id,))
-    r = cur.fetchone(); cur.close(); conn.close(); return r
+                  live_gps_aktiv,live_gps_tekshiruv,wifi_aktiv,wifi_ssid,wifi_mac,
+                  COALESCE(audio_aktiv,FALSE),COALESCE(matn_aktiv,FALSE)
+                  FROM kompaniyalar WHERE id=%s''', (komp_id,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    if r: _komp_kesh[komp_id] = (time.time(), r)
+    return r
+
+def kompaniya_kesh_tozala(komp_id=None):
+    if komp_id: _komp_kesh.pop(komp_id, None)
+    else: _komp_kesh.clear()
 
 def kompaniya_holat_ozgartir(komp_id, holat):
     try:
@@ -312,6 +383,7 @@ def kompaniya_funksiya_ozgartir(komp_id, funksiya, qiymat):
     conn = connect(); cur = conn.cursor()
     cur.execute(f"UPDATE kompaniyalar SET {funksiya}=%s WHERE id=%s", (qiymat, komp_id))
     conn.commit(); cur.close(); conn.close()
+    kompaniya_kesh_tozala(komp_id)
 
 def kompaniya_tahrirlash(komp_id, maydon, qiymat):
     conn = connect(); cur = conn.cursor()
@@ -520,16 +592,25 @@ def barcha_xodimlar_eslatma():
 def keldi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
     conn = connect(); cur = conn.cursor()
     sana = hozir().strftime("%Y-%m-%d")
-    vaqt = hozir().strftime("%H:%M")
-    cur.execute("SELECT id FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
-    if cur.fetchone(): cur.close(); conn.close(); return "already"
+    haqiqiy_vaqt = hozir().strftime("%H:%M")
+    # Oxirgi yozuvni tekshir
+    cur.execute("SELECT id, ketdi FROM davomat WHERE xodim_id=%s AND sana=%s ORDER BY id DESC LIMIT 1", (xodim_id, sana))
+    row = cur.fetchone()
+    if row:
+        _, ketdi = row
+        if not ketdi:
+            cur.close(); conn.close(); return "already"
     cur.execute("SELECT ish_boshlanish FROM xodimlar WHERE id=%s", (xodim_id,))
     x = cur.fetchone(); kechikish = 0
-    if x:
-        try:
-            b = datetime.strptime(x[0], "%H:%M"); k = datetime.strptime(vaqt, "%H:%M")
-            if k > b: kechikish = int((k - b).total_seconds() / 60)
-        except: pass
+    ish_bosh = x[0] if x else "08:00"
+    # Ish vaqtidan oldin kelsa — ish boshlanish vaqtini yoz
+    try:
+        b = datetime.strptime(ish_bosh, "%H:%M")
+        k = datetime.strptime(haqiqiy_vaqt, "%H:%M")
+        vaqt = ish_bosh if k < b else haqiqiy_vaqt
+        if k > b: kechikish = int((k - b).total_seconds() / 60)
+    except:
+        vaqt = haqiqiy_vaqt
     cur.execute('''INSERT INTO davomat(xodim_id,kompaniya_id,sana,keldi,kechikish,kiritdi,kiritdi_id)
                   VALUES(%s,%s,%s,%s,%s,%s,%s)''', (xodim_id,komp_id,sana,vaqt,kechikish,kiritdi,kiritdi_id))
     conn.commit(); cur.close(); conn.close()
@@ -544,20 +625,29 @@ def keldi_rasm_saqlash(xodim_id, rasm_id):
 def ketdi_belgilash(xodim_id, komp_id, kiritdi="xodim", kiritdi_id=None):
     conn = connect(); cur = conn.cursor()
     sana = hozir().strftime("%Y-%m-%d")
-    vaqt = hozir().strftime("%H:%M")
-    cur.execute("SELECT keldi FROM davomat WHERE xodim_id=%s AND sana=%s", (xodim_id, sana))
+    haqiqiy_vaqt = hozir().strftime("%H:%M")
+    cur.execute("SELECT id, keldi FROM davomat WHERE xodim_id=%s AND sana=%s AND ketdi IS NULL ORDER BY id DESC LIMIT 1", (xodim_id, sana))
     row = cur.fetchone()
-    if not row or not row[0]: cur.close(); conn.close(); return "nokeldi"
+    if not row or not row[1]: cur.close(); conn.close(); return "nokeldi"
+    davomat_id, keldi_vaqt = row
+    cur.execute("SELECT ish_tugash FROM xodimlar WHERE id=%s", (xodim_id,))
+    x = cur.fetchone()
+    ish_tugash = x[0] if x else "18:00"
+    # Ish vaqtidan keyin ketsa — ish tugash vaqtini yoz
     try:
-        k = datetime.strptime(row[0], "%H:%M"); kv = datetime.strptime(vaqt, "%H:%M")
-        ish_soat = round((kv - k).total_seconds() / 3600, 2)
+        tug = datetime.strptime(ish_tugash, "%H:%M")
+        kv = datetime.strptime(haqiqiy_vaqt, "%H:%M")
+        vaqt = ish_tugash if kv > tug else haqiqiy_vaqt
+    except:
+        vaqt = haqiqiy_vaqt
+    try:
+        k = datetime.strptime(keldi_vaqt, "%H:%M")
+        kv2 = datetime.strptime(vaqt, "%H:%M")
+        ish_soat = round((kv2 - k).total_seconds() / 3600, 2)
     except: ish_soat = 0
     cur.execute('''UPDATE davomat SET ketdi=%s,ish_soat=%s,kiritdi=%s,kiritdi_id=%s
-                  WHERE xodim_id=%s AND sana=%s''', (vaqt,ish_soat,kiritdi,kiritdi_id,xodim_id,sana))
-    conn.commit()
-    cur.execute("SELECT ish_tugash FROM xodimlar WHERE id=%s", (xodim_id,))
-    x = cur.fetchone(); cur.close(); conn.close()
-    ish_tugash = x[0] if x else "18:00"
+                  WHERE id=%s''', (vaqt, ish_soat, kiritdi, kiritdi_id, davomat_id))
+    conn.commit(); cur.close(); conn.close()
     return f"ketdi|{vaqt}|{ish_soat}|{ish_tugash}"
 
 def ketdi_rasm_saqlash(xodim_id, rasm_id):
@@ -675,7 +765,19 @@ def live_lokatsiya_saqlash(xodim_id, komp_id, lat, lon):
 def live_lokatsiya_olish(xodim_id):
     conn = connect(); cur = conn.cursor()
     cur.execute("SELECT lat,lon,vaqt FROM live_lokatsiyalar WHERE xodim_id=%s AND faol=TRUE", (xodim_id,))
-    r = cur.fetchone(); cur.close(); conn.close(); return r
+    r = cur.fetchone(); cur.close(); conn.close()
+    if not r: return None
+    # So'nggi yangilanish 10 daqiqadan eski bo'lsa — o'chgan
+    try:
+        from datetime import datetime
+        last = datetime.strptime(r[2], "%H:%M:%S")
+        now = hozir()
+        last_full = now.replace(hour=last.hour, minute=last.minute, second=last.second)
+        diff = (now - last_full).total_seconds()
+        if diff > 600:  # 10 daqiqa
+            return None
+    except: pass
+    return r
 
 def live_lokatsiya_ochirish(xodim_id):
     conn = connect(); cur = conn.cursor()
@@ -704,10 +806,61 @@ def xodim_oy_statistika(xodim_id, oy=None):
                   COUNT(CASE WHEN kechikish>0 THEN 1 END),
                   COALESCE(SUM(kechikish),0),
                   COUNT(CASE WHEN holat='sababli' THEN 1 END),
-                  COUNT(CASE WHEN keldi IS NULL THEN 1 END)
+                  COUNT(CASE WHEN keldi IS NULL THEN 1 END),
+                  COUNT(CASE WHEN holat='sababsiz' THEN 1 END)
                   FROM davomat WHERE xodim_id=%s AND sana LIKE %s''',
                 (xodim_id, f"{oy}%"))
     r = cur.fetchone(); cur.close(); conn.close(); return r
+
+def xodim_oylik_hisob(xodim_id, oy=None):
+    """Oylik ish haqi — KPI sozlamalari bilan hisoblash"""
+    if not oy: oy = hozir().strftime("%Y-%m")
+    conn = connect(); cur = conn.cursor()
+
+    # Asosiy oylik va davomat statistikasi bitta so'rovda
+    cur.execute('''SELECT x.oylik,
+                   COUNT(CASE WHEN d.holat='sababsiz' THEN 1 END),
+                   COUNT(CASE WHEN d.holat='sababli'  THEN 1 END),
+                   COUNT(CASE WHEN d.kechikish > 0    THEN 1 END),
+                   COALESCE(SUM(d.kechikish), 0)
+                   FROM xodimlar x
+                   LEFT JOIN davomat d ON d.xodim_id=x.id AND d.sana LIKE %s
+                   WHERE x.id=%s GROUP BY x.oylik''', (f"{oy}%", xodim_id))
+    row = cur.fetchone()
+
+    # KPI sozlamalari
+    cur.execute("SELECT * FROM xodim_kpi WHERE xodim_id=%s", (xodim_id,))
+    kpi = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not row or not row[0]: return 0, 0, 0
+    oylik = float(row[0])
+    sababsiz      = row[1] or 0
+    sababli       = row[2] or 0
+    kech_kun      = row[3] or 0
+
+    # Kunlik ish haqi
+    yil, oy_raqam = int(oy[:4]), int(oy[5:])
+    _, kun_soni = calendar.monthrange(yil, oy_raqam)
+    ish_kunlari = sum(1 for d in range(1, kun_soni+1) if date(yil, oy_raqam, d).weekday() < 5)
+    kunlik = oylik / ish_kunlari if ish_kunlari > 0 else 0
+
+    # KPI jarimalarini qo'llash
+    if kpi:
+        sababsiz_jarima = float(kpi[5] or 0) * sababsiz   # sababsiz_qolish_jarima
+        sababli_jarima  = float(kpi[7] or 0) * sababli    # sababli_qolish_jarima
+        kech_jarima     = float(kpi[9] or 0) * kech_kun   # kech_kelish_jarima
+        qosh_jarima     = float(kpi[15] or 0)             # qoshimcha_jarima
+    else:
+        # KPI yo'q bo'lsa — kunlik stavkadan hisoblash
+        sababsiz_jarima = kunlik * sababsiz
+        sababli_jarima  = kunlik * sababli
+        kech_jarima     = 0
+        qosh_jarima     = 0
+
+    jami_jarima = sababsiz_jarima + sababli_jarima + kech_jarima + qosh_jarima
+    hisoblangan = max(0, oylik - jami_jarima)
+    return hisoblangan, jami_jarima, sababsiz_jarima
 
 def kompaniya_reyting(komp_id, oy=None):
     conn = connect(); cur = conn.cursor()
@@ -1004,19 +1157,19 @@ def hisobot_row_format(komp_id=None, sana_from=None, sana_to=None, super_admin=F
         if kiritdi_id in admin_names_cache:
             return admin_names_cache[kiritdi_id]
 
-        cur2 = connect().cursor()
+        conn2 = connect()
+        cur2 = conn2.cursor()
         cur2.execute("SELECT ism FROM super_adminlar WHERE telegram_id=%s", (kiritdi_id,))
         result = cur2.fetchone()
         if result:
             admin_names_cache[kiritdi_id] = result[0]
-            cur2.close()
+            cur2.close(); conn2.close()
             return result[0]
 
-        # Fallback
         cur2.execute("SELECT ism FROM xodimlar WHERE telegram_id=%s", (kiritdi_id,))
         result = cur2.fetchone()
         admin_names_cache[kiritdi_id] = result[0] if result else kiritdi_type.upper()
-        cur2.close()
+        cur2.close(); conn2.close()
         return admin_names_cache[kiritdi_id]
 
     # Data yozish - Python da iteratsiya (database sorash yo'q!)
@@ -1471,6 +1624,53 @@ def kirm_qoshish(xodim_id, komp_id, turi, summa, izoh, sana, vaqt, created_by_ro
             conn.rollback(); cur.close(); conn.close()
         raise Exception(f"Kirm qo'shish xatosi: {str(e)}")
 
+def xodim_funksiya_olish(xodim_id):
+    """Xodimning shaxsiy funksiya sozlamalarini olish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute('''SELECT xod_gps,xod_selfie,xod_audio,xod_matn,
+                          xod_face_id,xod_hikvision,xod_live_gps,xod_wifi
+                   FROM xodimlar WHERE id=%s''', (xodim_id,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return r if r else (None,)*8
+
+def xodim_funksiya_ozgartir(xodim_id, ustun, qiymat):
+    """Xodim funksiyasini yoqish/o'chirish/nullga qaytarish"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute(f"UPDATE xodimlar SET {ustun}=%s WHERE id=%s", (qiymat, xodim_id))
+    conn.commit(); cur.close(); conn.close()
+
+def xodim_kpi_olish(xodim_id):
+    """Xodimning KPI sozlamalarini olish, yo'q bo'lsa default qaytaradi"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT * FROM xodim_kpi WHERE xodim_id=%s", (xodim_id,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return r
+
+def xodim_kpi_yaratish(xodim_id, komp_id):
+    """KPI yozuvi yaratish (mavjud bo'lmasa)"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute("SELECT id FROM xodim_kpi WHERE xodim_id=%s", (xodim_id,))
+    if not cur.fetchone():
+        cur.execute("INSERT INTO xodim_kpi(xodim_id,komp_id) VALUES(%s,%s)", (xodim_id, komp_id))
+        conn.commit()
+    cur.close(); conn.close()
+
+def xodim_kpi_yangilash(xodim_id, maydon, qiymat):
+    """KPI maydonini yangilash"""
+    conn = connect(); cur = conn.cursor()
+    cur.execute(f"UPDATE xodim_kpi SET {maydon}=%s WHERE xodim_id=%s", (qiymat, xodim_id))
+    conn.commit(); cur.close(); conn.close()
+
+def kirm_holat_yangilash(kirm_id, holat):
+    conn = connect(); cur = conn.cursor()
+    cur.execute("UPDATE kirm SET holat=%s WHERE id=%s", (holat, kirm_id))
+    conn.commit(); cur.close(); conn.close()
+
+def chiqim_holat_yangilash(chiqim_id, holat):
+    conn = connect(); cur = conn.cursor()
+    cur.execute("UPDATE chiqim SET holat=%s WHERE id=%s", (holat, chiqim_id))
+    conn.commit(); cur.close(); conn.close()
+
 def kirm_olish(xodim_id, komp_id, sana_from=None, sana_to=None):
     """Xodimning kirm yozuvlarini olish"""
     conn = connect(); cur = conn.cursor()
@@ -1488,15 +1688,16 @@ def kirm_olish(xodim_id, komp_id, sana_from=None, sana_to=None):
     return r
 
 def kirm_jami(xodim_id, komp_id, sana_from=None, sana_to=None):
-    """Xodimning umumiy kirm summasini hisoblash"""
+    """Xodimning umumiy kirm summasini hisoblash (faqat tasdiqlangan)"""
     conn = connect(); cur = conn.cursor()
     if sana_from and sana_to:
         cur.execute('''SELECT SUM(summa) FROM kirm
-                      WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s''',
+                      WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s
+                      AND holat='qabul_qilindi' ''',
                     (xodim_id, komp_id, sana_from, sana_to))
     else:
         cur.execute('''SELECT SUM(summa) FROM kirm
-                      WHERE xodim_id=%s AND komp_id=%s''',
+                      WHERE xodim_id=%s AND komp_id=%s AND holat='qabul_qilindi' ''',
                     (xodim_id, komp_id))
     r = cur.fetchone(); cur.close(); conn.close()
     return float(r[0]) if r and r[0] else 0.0
@@ -1536,15 +1737,16 @@ def chiqim_olish(xodim_id, komp_id, sana_from=None, sana_to=None):
     return r
 
 def chiqim_jami(xodim_id, komp_id, sana_from=None, sana_to=None):
-    """Xodimning umumiy chiqim summasini hisoblash"""
+    """Xodimning umumiy chiqim summasini hisoblash (faqat tasdiqlangan)"""
     conn = connect(); cur = conn.cursor()
     if sana_from and sana_to:
         cur.execute('''SELECT SUM(summa) FROM chiqim
-                      WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s''',
+                      WHERE xodim_id=%s AND komp_id=%s AND sana BETWEEN %s AND %s
+                      AND holat='qabul_qilindi' ''',
                     (xodim_id, komp_id, sana_from, sana_to))
     else:
         cur.execute('''SELECT SUM(summa) FROM chiqim
-                      WHERE xodim_id=%s AND komp_id=%s''',
+                      WHERE xodim_id=%s AND komp_id=%s AND holat='qabul_qilindi' ''',
                     (xodim_id, komp_id))
     r = cur.fetchone(); cur.close(); conn.close()
     return float(r[0]) if r and r[0] else 0.0

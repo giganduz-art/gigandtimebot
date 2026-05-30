@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jonli lokatsiya</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            background: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            min-height: 100vh; padding: 20px;
+        }
+        .icon { font-size: 60px; margin-bottom: 16px; }
+        .title { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+        .status { font-size: 14px; color: var(--tg-theme-hint-color, #888); margin-bottom: 24px; }
+        .coords { font-size: 13px; background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            padding: 10px 16px; border-radius: 10px; margin-bottom: 24px; width: 100%; text-align: center; }
+        .pulse { display: inline-block; width: 10px; height: 10px;
+            background: #4CAF50; border-radius: 50%; margin-right: 6px;
+            animation: pulse 1.2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+        .error { color: #f44336; }
+        .btn {
+            background: var(--tg-theme-button-color, #2196F3);
+            color: var(--tg-theme-button-text-color, #fff);
+            border: none; border-radius: 12px; padding: 14px 32px;
+            font-size: 16px; cursor: pointer; width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="icon">📡</div>
+    <div class="title">Jonli lokatsiya</div>
+    <div class="status" id="status">GPS aniqlanmoqda...</div>
+    <div class="coords" id="coords">—</div>
+    <button class="btn" id="btn" onclick="stop()">To'xtatish</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        const params = new URLSearchParams(window.location.search);
+        const userId = params.get('user_id') || tg.initDataUnsafe?.user?.id;
+        const kompId = params.get('komp_id');
+
+        let watchId = null;
+        let count = 0;
+
+        function start() {
+            watchId = navigator.geolocation.watchPosition(function(pos) {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                count++;
+                document.getElementById('status').innerHTML = '<span class="pulse"></span> Kuzatilmoqda (' + count + ')';
+                document.getElementById('coords').textContent = '📍 ' + lat.toFixed(5) + ', ' + lon.toFixed(5);
+
+                fetch('/live-location-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, komp_id: kompId, lat: lat, lon: lon })
+                }).catch(function(){});
+
+            }, function(err) {
+                document.getElementById('status').innerHTML = '<span class="error">❌ GPS xatosi: ' + err.message + '</span>';
+            }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+        }
+
+        function stop() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            tg.close();
+        }
+
+        start();
+    </script>
+</body>
+</html>
