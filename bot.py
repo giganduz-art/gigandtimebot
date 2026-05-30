@@ -5565,6 +5565,20 @@ async def wifi_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Xato: {context.error}", exc_info=context.error)
+    # Super adminlarga xato haqida xabar yuborish
+    try:
+        sa_list = barcha_super_admin_idlar()
+        xato_matn = str(context.error)[:200]
+        for sa_id in sa_list:
+            try:
+                await context.bot.send_message(
+                    sa_id,
+                    f"⚠️ *Bot xatosi:*\n`{xato_matn}`",
+                    parse_mode='Markdown')
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 # ==================== FLASK WEB SERVER ====================
 
