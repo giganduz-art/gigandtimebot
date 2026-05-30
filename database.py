@@ -19,7 +19,7 @@ _KESH_TTL = 30    # 30 soniya
 def _get_pool():
     global _pool
     if _pool is None or _pool.closed:
-        _pool = ThreadedConnectionPool(5, 20, DATABASE_URL)
+        _pool = ThreadedConnectionPool(1, 5, DATABASE_URL)
     return _pool
 
 class _PooledConn:

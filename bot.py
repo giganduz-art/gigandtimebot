@@ -5381,22 +5381,28 @@ async def eslatma_job(context: ContextTypes.DEFAULT_TYPE):
     sana = hozir_v.strftime("%Y-%m-%d")
     bugun = hozir_v.strftime("%m-%d")
 
-    # Bitta so'rovda barcha kerakli ma'lumot
-    conn = connect(); cur = conn.cursor()
-    cur.execute('''
-        SELECT x.id, x.telegram_id, x.ism, x.ish_boshlanish, x.ish_tugash,
-               x.tugilgan_kun, x.kompaniya_id, k.live_gps_aktiv,
-               d.keldi, d.ketdi
-        FROM xodimlar x
-        JOIN kompaniyalar k ON x.kompaniya_id=k.id
-        LEFT JOIN davomat d ON d.xodim_id=x.id AND d.sana=%s AND d.ketdi IS NULL
-        WHERE x.telegram_id IS NOT NULL AND x.holat='faol' AND k.holat='faol'
-    ''', (sana,))
-    xodimlar = cur.fetchall()
-    cur.close(); conn.close()
+    # Bitta so'rovda barcha kerakli ma'lumot + live GPS holati
+    try:
+        conn = connect(); cur = conn.cursor()
+        cur.execute('''
+            SELECT x.id, x.telegram_id, x.ism, x.ish_boshlanish, x.ish_tugash,
+                   x.tugilgan_kun, x.kompaniya_id, k.live_gps_aktiv,
+                   d.keldi, d.ketdi,
+                   ll.faol AS live_faol, ll.vaqt AS live_vaqt
+            FROM xodimlar x
+            JOIN kompaniyalar k ON x.kompaniya_id=k.id
+            LEFT JOIN davomat d ON d.xodim_id=x.id AND d.sana=%s AND d.ketdi IS NULL
+            LEFT JOIN live_lokatsiyalar ll ON ll.xodim_id=x.id AND ll.faol=TRUE
+            WHERE x.telegram_id IS NOT NULL AND x.holat=\'faol\' AND k.holat=\'faol\'
+        ''', (sana,))
+        xodimlar = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception:
+        return
 
+    import time as _time
     for row in xodimlar:
-        xodim_id, telegram_id, ism, ish_bosh, ish_tug, tugilgan_kun, komp_id, live_gps_aktiv, keldi, ketdi = row
+        xodim_id, telegram_id, ism, ish_bosh, ish_tug, tugilgan_kun, komp_id, live_gps_aktiv, keldi, ketdi, live_faol, live_vaqt = row
         if not telegram_id: continue
 
         try:
@@ -5426,15 +5432,21 @@ async def eslatma_job(context: ContextTypes.DEFAULT_TYPE):
                     ]
                     await context.bot.send_message(telegram_id, _r.choice(hazillar), parse_mode='Markdown')
 
-            # 4. Live GPS o'chgan (faqat ish vaqtida, keldi bor, ketdi yo'q)
+            # 4. Live GPS o'chgan — DB so'rovsiz tekshir
             if live_gps_aktiv and keldi and not ketdi:
-                mavjud = live_lokatsiya_olish(xodim_id)
-                if not mavjud:
+                live_active = False
+                if live_faol and live_vaqt:
+                    try:
+                        last = datetime.strptime(live_vaqt, "%H:%M:%S")
+                        last_full = hozir_v.replace(hour=last.hour, minute=last.minute, second=last.second)
+                        live_active = (hozir_v - last_full).total_seconds() < 600
+                    except Exception: pass
+                if not live_active:
                     kb = live_gps_xabar(xodim_id, komp_id)
                     await context.bot.send_message(telegram_id,
                         f"📡 *{ism}, jonli lokatsiya uzildi! Qayta ulang:*",
                         parse_mode='Markdown', reply_markup=kb)
-        except: pass
+        except Exception: pass
 
 # ==================== WIFI/GPS CALLBACK ====================
 
