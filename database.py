@@ -11,41 +11,14 @@ import time
 TASHKENT = pytz.timezone('Asia/Tashkent')
 SUPER_ADMIN_KOD = os.environ.get("SUPER_ADMIN_KOD", "0001")
 
-# Railway asosiy baza, Neon zaxira baza
-RAILWAY_URL = "postgresql://postgres:RdcrgixOGANtWvspNqPdFVPhyUkBmjeS@kodama.proxy.rlwy.net:59039/railway"
-NEON_URL = "postgresql://neondb_owner:npg_mlJ7sC9LhqTB@ep-snowy-cake-apn5lmrf-pooler.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require"
-DATABASE_URL = os.environ.get("DATABASE_URL", NEON_URL)
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 _pool = None
 _komp_kesh = {}   # {komp_id: (vaqt, data)}
 _KESH_TTL = 30    # 30 soniya
-_railway_online = False
-_last_railway_check = 0
-_RAILWAY_CHECK_INTERVAL = 60  # har 60 soniyada Railway ni tekshir
-
-def _check_railway():
-    """Railway bazasi qayta ishlayaptimi tekshirish"""
-    global _railway_online, _last_railway_check, DATABASE_URL, _pool
-    now = time.time()
-    if now - _last_railway_check < _RAILWAY_CHECK_INTERVAL:
-        return
-    _last_railway_check = now
-    try:
-        test = psycopg2.connect(RAILWAY_URL, connect_timeout=5)
-        test.close()
-        if not _railway_online:
-            print("✅ RAILWAY BAZA QAYTA ISHLADI! Ulanmoqda...")
-            _railway_online = True
-            DATABASE_URL = RAILWAY_URL
-            if _pool and not _pool.closed:
-                _pool.closeall()
-            _pool = None
-    except:
-        _railway_online = False
 
 def _get_pool():
     global _pool
-    _check_railway()
     if _pool is None or _pool.closed:
         _pool = ThreadedConnectionPool(1, 5, DATABASE_URL)
     return _pool
