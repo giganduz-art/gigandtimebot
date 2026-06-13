@@ -12,7 +12,7 @@ from database import *
 from flask import Flask, render_template, request, jsonify
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)h
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 TASHKENT = pytz.timezone('Asia/Tashkent')
@@ -5567,7 +5567,9 @@ async def xato(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Super adminlarga xato haqida xabar yuborish
     try:
         sa_list = barcha_super_admin_idlar()
-        xato_matn = str(context.error)[:200]
+        if 'Conflict' in type(context.error).__name__:
+                      return
+                  xato_matn = str(context.error)[:200]
         for sa_id in sa_list:
             try:
                 await context.bot.send_message(
